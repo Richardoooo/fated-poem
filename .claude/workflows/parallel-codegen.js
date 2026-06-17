@@ -14,7 +14,7 @@ export const meta = {
   name: 'parallel-codegen',
   description: '并行生成多个新模块（types/db/engine/UI），然后验证编译',
   phases: [
-    { title: '设计', detail: '根据 findings.md 确定每个模块的接口' },
+    { title: '设计', detail: '根据 docs/planning/findings.md 确定每个模块的接口' },
     { title: '生成', detail: '并行生成所有模块代码' },
     { title: '验证', detail: 'TypeScript 编译 + 接口一致性检查' },
   ],
@@ -62,7 +62,7 @@ const results = await pipeline(
     - 所有类型引用自 types.ts
     - 导出清晰的公共 API
     - 用 JSDoc 注释关键接口
-    - 参考 findings.md 中的架构设计（特别是 Phase 1 修正版）
+    - 参考 docs/planning/findings.md 中的架构设计（特别是 Phase 1 修正版）
     - 已有代码在 src/sillytavern/ 下，不要破坏现有导出`,
     { phase: '生成', label: mod.key, isolation: 'worktree' }
   ),

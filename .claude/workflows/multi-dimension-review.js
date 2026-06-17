@@ -41,7 +41,7 @@ const DIMENSIONS = [
     - 新类型是否都在 types.ts 中（而非散落各模块）
     - 是否遵循三层架构（DB → Engine → Store）
     - 是否有循环依赖风险
-    - API 是否与 findings.md 的 ADR 一致
+    - API 是否与 docs/planning/findings.md 的 ADR 一致
     - 扩展点是否预留（角色可插拔、Agent 可配置）`,
   },
   {

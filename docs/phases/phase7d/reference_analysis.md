@@ -1157,4 +1157,4 @@ function findMatchingPreset(character, selections, background) {
 
 ---
 
-*文档结束。新 session 重构时请参考此文档了解原版页面架构，结合 `phase7d_current_state.md` 了解当前实现状态。*
+*文档结束。新 session 重构时请参考此文档了解原版页面架构，结合 `docs/phases/phase7d/current_state.md` 了解当前实现状态。*

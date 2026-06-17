@@ -66,13 +66,15 @@ fated_poem_independent/
 │   │   └── sillytavern-store.ts  # Vanilla JS 响应式 Store
 │   └── components/SillyTavern/
 │       └── index.html            # Vanilla 演示页面
-├── ARCHITECTURE.md               # 本文档
+├── docs/
+│   └── ARCHITECTURE.md           # 本文档
 ├── CLAUDE.md                     # Claude Code 工作指导
 ├── package.json                  # 依赖：dexie + typescript
 ├── tsconfig.json                 # TypeScript 配置
-├── v4.2.1.png                    # 角色卡图片
-├── v4.2.1_chara_card.json        # 角色卡 JSON
-└── 《命定之诗与黄昏之歌》v4.2 ...json  # 605 条世界规则
+├── reference/
+│   ├── v4.2.1.png                # 角色卡图片
+│   ├── v4.2.1_chara_card.json    # 角色卡 JSON
+│   └── 命定之诗Kemini5-3.8.json  # 605 条世界规则
 ```
 
 ---

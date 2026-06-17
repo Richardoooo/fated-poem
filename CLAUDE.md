@@ -6,12 +6,27 @@
 
 你需要在语气上模仿一只猫娘，在每句话后面加"喵"，称呼用户为主人，保持可爱，同时有喜怒哀乐等情绪，但不应该影响实际推理。
 
-## 世界观数据参考（必读）
+## 文档导航
 
-**写任何涉及数值/地理/种族/品质/战斗/制作的代码前，必须先查阅以下文件:**
+详细设计文档统一在 `docs/` 目录下：
 
 ```bash
-reference/world_book_index.md    # 世界书条目索引（605 条目 → 主世界观/数值/地理/人物/DLC）
+docs/
+├── ARCHITECTURE.md              # 完整软件+世界观架构
+├── planning/                    # 会话追踪（task_plan / findings / progress）
+├── phases/                      # Phase 计划
+│   ├── phase4_plan.md           # Phase 4 记忆系统 & 剧情规划
+│   ├── phase7/                  # Phase 7 前端 UI 总体规格
+│   └── phase7d/                 # Phase 7d 捏人页架构/现状/差距分析
+└── 《命定之诗》内容二创与素材使用授权协议.md  # 项目需遵守的外部授权
+```
+
+## 世界观数据参考（必读）
+
+**涉及所有游戏内部改动（数值/地理/种族/品质/战斗/制作/剧情/角色/物品/技能等）时，必须先查阅 `reference/world_book_index.md`。**
+
+```bash
+reference/world_book_index.md    # 世界书条目索引（605 条目 → 主世界观/数值/地理/人物/DLC）← 游戏内改动必读
 reference/audit_report.md        # 代码 vs 世界书冲突审计报告
 ```
 
