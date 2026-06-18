@@ -445,6 +445,21 @@ export class AgentOrchestrator {
         }
         this.pendingCombatMarkers = [];
       }
+
+      // 🆕 时间推进: vars_update 输出 delta_time
+      const varsOutput = this.getAgentOutputText('vars_update');
+      if (varsOutput) {
+        try {
+          const parsed = JSON.parse(varsOutput.trim());
+          if (parsed.delta_time && typeof parsed.delta_time === 'number' && parsed.delta_time > 0) {
+            const { createStateManager } = await import('./state-manager');
+            const sm = createStateManager(this.context.saveId);
+            await sm.applyTimeAdvance(parsed.delta_time);
+          }
+        } catch {
+          // vars_update 输出不是 JSON，忽略
+        }
+      }
     }
   }
 

@@ -1,0 +1,2 @@
+import{d as a,b as n,c as s,n as o,L as d,s as l}from"./index-Sv8XOvSG.js";const c=["disabled"],b=a({__name:"AppButton",props:{variant:{},size:{},disabled:{type:Boolean},block:{type:Boolean}},setup(e){return(t,i)=>(n(),s("button",{class:o(["app-btn",[`btn-${e.variant||"secondary"}`,`btn-${e.size||"md"}`,{"btn-block":e.block,"btn-disabled":e.disabled}]]),disabled:e.disabled},[d(t.$slots,"default",{},void 0)],10,c))}}),p=l(b,[["__scopeId","data-v-98d18f5c"]]);export{p as A};
+//# sourceMappingURL=AppButton-CKSn_-Ur.js.map

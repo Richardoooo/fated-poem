@@ -234,12 +234,14 @@ ${formatHistory(ctx, 8)}`,
 - replace: 设置新值 {"path": "变量名", "value": 新值}
 - delta: 数值增减 {"path": "变量名", "amount": +10 或 -5}
 - insert: 数组插入 {"path": "数组变量名", "value": 新元素, "index": 可选}
+	- delta_time: 时间推进 (分钟) {"delta_time": 180}
 
 **注意:**
 - 只提取正文中明确发生的变量变化
 - 数值变化要精确（HP减少多少、金钱增减多少）
 - 位置变化每次都要更新
 - 新获得的物品/技能要 insert
+	- 时间流逝用 delta_time 表示（分钟），如 "过了一小时" → delta_time: 60
 
 **输出格式 (严格 JSON):**
 {"replace": [{"path": "位置", "value": "北方-诺斯加德-白曜城-铁匠铺"}], "delta": [{"path": "金钱", "amount": -50}], "insert": [{"path": "背包", "value": {"name": "铁剑", "quantity": 1}}]}`,
@@ -247,10 +249,10 @@ ${formatHistory(ctx, 8)}`,
     fixedExamples:
 `**示例:**
 当前变量: {"金钱": 200, "HP": 85, "背包": ["药水"], "位置": "北方-诺斯加德-白曜城-市集"}
-正文: "你花了50G从铁匠那里买了一把新的铁剑，然后不小心被炉火烫伤了手（HP-5）。"
+正文: "你花了50G从铁匠那里买了一把新的铁剑，休息了一小时后继续上路。"
 
 输出:
-{"replace": [{"path": "位置", "value": "北方-诺斯加德-白曜城-五馆街-铁匠铺"}], "delta": [{"path": "金钱", "amount": -50}, {"path": "HP", "amount": -5}], "insert": [{"path": "背包", "value": {"name": "铁剑", "quantity": 1, "type": "weapon"}}]}`,
+{"replace": [{"path": "位置", "value": "北方-诺斯加德-白曜城-五馆街-铁匠铺"}], "delta": [{"path": "金钱", "amount": -50}], "delta_time": 60, "insert": [{"path": "背包", "value": {"name": "铁剑", "quantity": 1, "type": "weapon"}}]}`,
 
     variableContext: (ctx: AgentContext) => `
 **当前变量:**

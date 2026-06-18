@@ -137,3 +137,89 @@ export async function markNewsRead(profile: SaveProfile, newsId: string): Promis
   await updateProfile(profile);
   return profile;
 }
+
+// ═══════════════════════════════════════════════════════════
+// Quest 便利函数 (Phase 7e)
+// ═══════════════════════════════════════════════════════════
+
+import type { Quest } from './types';
+import { createDefaultQuest } from './types';
+
+/** 获取所有任务 */
+export function getQuests(profile: SaveProfile): Record<string, Quest> {
+  return profile.quests ?? {};
+}
+
+/** 获取单个任务 */
+export function getQuest(profile: SaveProfile, name: string): Quest | undefined {
+  return profile.quests[name];
+}
+
+/** 设置/更新任务 (upsert) */
+export async function setQuest(profile: SaveProfile, name: string, quest: Partial<Quest>): Promise<SaveProfile> {
+  const existing = profile.quests[name] ?? createDefaultQuest();
+  profile.quests[name] = { ...existing, ...quest };
+  await updateProfile(profile);
+  return profile;
+}
+
+/** 删除任务 */
+export async function removeQuest(profile: SaveProfile, name: string): Promise<SaveProfile> {
+  delete profile.quests[name];
+  await updateProfile(profile);
+  return profile;
+}
+
+/** 获取活跃任务 (状态不为"已完成"和"失败") */
+export function getActiveQuests(profile: SaveProfile): [string, Quest][] {
+  return Object.entries(profile.quests ?? {}).filter(
+    ([, q]) => q.status !== '已完成' && q.status !== '失败',
+  );
+}
+
+/** 按关注度排序: 高→中→低，同关注度按名称 */
+export function getSortedQuests(profile: SaveProfile): [string, Quest][] {
+  const priorityOrder: Record<string, number> = { '高': 0, '中': 1, '低': 2 };
+  return Object.entries(profile.quests ?? {}).sort(
+    ([aName, a], [bName, b]) =>
+      (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2) ||
+      aName.localeCompare(bName),
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Map Marker 便利函数 (Phase 7e)
+// ═══════════════════════════════════════════════════════════
+
+import type { MapMarker } from './types';
+
+/** 获取所有地图标记 */
+export function getMapMarkers(profile: SaveProfile): MapMarker[] {
+  return (profile.worldFlags.mapMarkers as MapMarker[]) ?? [];
+}
+
+/** 按 ID 查找标记 */
+export function getMapMarker(profile: SaveProfile, id: string): MapMarker | undefined {
+  return getMapMarkers(profile).find(m => m.id === id);
+}
+
+/** 添加/更新标记 (upsert by id) */
+export async function setMapMarker(profile: SaveProfile, marker: MapMarker): Promise<SaveProfile> {
+  const markers = getMapMarkers(profile);
+  const idx = markers.findIndex(m => m.id === marker.id);
+  if (idx >= 0) {
+    markers[idx] = marker;
+  } else {
+    markers.push(marker);
+  }
+  profile.worldFlags.mapMarkers = markers;
+  await updateProfile(profile);
+  return profile;
+}
+
+/** 删除标记 */
+export async function removeMapMarker(profile: SaveProfile, id: string): Promise<SaveProfile> {
+  profile.worldFlags.mapMarkers = getMapMarkers(profile).filter(m => m.id !== id);
+  await updateProfile(profile);
+  return profile;
+}

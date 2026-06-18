@@ -19,6 +19,7 @@ defineEmits<{
     <div class="attr-controls">
       <button
         class="attr-btn"
+        data-test="dec-btn"
         :disabled="modelValue <= 0"
         @click="$emit('dec', attrKey)"
         aria-label="减少"
@@ -26,6 +27,7 @@ defineEmits<{
       <span class="attr-value" :class="{ boosted: modelValue > 0 }">{{ modelValue }}</span>
       <button
         class="attr-btn"
+        data-test="inc-btn"
         :disabled="modelValue >= max || remaining <= 0"
         @click="$emit('inc', attrKey)"
         aria-label="增加"

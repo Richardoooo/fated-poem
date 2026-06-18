@@ -1,0 +1,286 @@
+# 词条效果 & 脚本系统 (Phase 7e+8)
+
+> 引擎参考文档。描述效果系统的四层架构：声明式词条(EffectParser) → 执行运行时(EffectRuntime) → 事件总线(EventBus) → AI 可编程脚本(ScriptExecutor)
+
+---
+
+## 一、四层架构
+
+```
+Layer 1  词条解析     $effect.parse()   中文→结构化 ParsedEffect   AI 可调用
+Layer 2  效果运行时   EffectRuntime     6 种效果类型分发           引擎内部
+Layer 3  事件总线     EventBus          发布-订阅，按存档隔离      引擎内部
+Layer 4  脚本沙盒     ScriptExecutor    AI 用 $ API 编写逻辑       AI 可调用
+```
+
+---
+
+## 二、Layer 1: 词条解析 (`effect-parser.ts`)
+
+把 AI 写的中文效果声明解析为结构化数据。
+
+```typescript
+// 输入: AI 写的中文
+"攻击力: +50, DR: 5%, 火焰抗性: +30"
+
+// $effect.parse() → 
+[
+  { key: "atk", rawKey: "攻击力", value: 50, isPercentage: false },
+  { key: "dr", rawKey: "DR", value: 5, isPercentage: true },
+  { key: "fireResist", rawKey: "火焰抗性", value: 30, isPercentage: false }
+]
+```
+
+**50+ 中→英键映射表**：攻击力→atk, 防御力→def, 暴击率→critRate, 火焰抗性→fireResist...
+
+```typescript
+$effect.parse(text)          // 解析声明字符串
+$effect.getValue(list, key)  // 查找指定 key 的值
+$effect.sumValues(list, key) // 多个效果同 key 求和
+```
+
+---
+
+## 三、Layer 2: 效果运行时 (`effect-runtime.ts`)
+
+执行声明式效果定义，按类型分发到具体处理器。
+
+```
+EffectRuntime.execute(effects)
+  ├── 按 priority 排序 (低→高)
+  ├── evaluateCondition() — EJS 条件检查
+  ├── 6 种类型分发:
+  │   ├── vars_patch        → 变量修改
+  │   ├── status_effect     → 添加/移除状态
+  │   ├── character_update  → 角色属性/资源变更
+  │   ├── dice_roll         → 骰子检定
+  │   ├── item_effect       → 物品使用/装备/卸下
+  │   └── skill_effect      → 技能使用/学习/遗忘
+  └── 递归处理 childEffects (连锁效果)
+```
+
+**EffectDefinition 结构**：
+
+```typescript
+{
+  type: 'status_effect',
+  source: 'agent' | 'system' | 'resolver',
+  payload: StatusEffectPayload,   // 效果负载
+  priority: number,               // 执行顺序
+  condition?: string,             // EJS 条件表达式
+  relatedEventId?: string         // 关联的 EventBus 事件
+}
+```
+
+---
+
+## 四、Layer 3: 事件总线 (`game-event.ts`)
+
+按存档隔离的发布-订阅系统，连接引擎各模块。
+
+```typescript
+// 10 种事件类型
+type GameEventType =
+  | 'character_action' | 'combat_action' | 'craft_action'
+  | 'status_effect' | 'variable_change' | 'plot_trigger'
+  | 'item_use' | 'skill_use' | 'location_change' | 'system'
+
+// 实例化 — 每个 SaveSlot 独立
+const bus = new EventBus({ saveId })
+bus.subscribe('combat_action', (event) => { ... })
+bus.emit({ type: 'status_effect', data: { ... } })
+```
+
+**引擎 emit 事件节点**：
+
+| 模块 | 事件 | 时机 |
+|------|------|------|
+| `state-manager` | `status_effect` | addEffect / removeEffect 后 |
+| `state-manager` | `variable_change` | set_variable / delta_variable 后 |
+| `combat-resolver` | `combat_action` | 攻击/技能使用后 |
+| `craft-resolver` | `craft_action` | 制作完成后 |
+| `plot-engine` | `plot_trigger` | 剧情条件触发后 |
+
+---
+
+## 五、Layer 4: 脚本沙盒 (`script-executor.ts`)
+
+AI 用 `$` API 编写效果逻辑，引擎在沙盒中执行。
+
+### 数据模型
+
+```
+物品/技能/装备:
+  ├── 效果: Record<string, string>   ← 前端渲染 (AI 写中文描述)
+  ├── scripts: Record<string, string> ← 引擎执行 (脚本名→代码)
+  └── 钩子引用: scripts 里的脚本名
+
+状态效果 (StatusEffect):
+  ├── stackable / maxStacks          ← 层数控制
+  ├── scripts: Record<string, string> ← 引擎执行
+  ├── onApply / onTick / onRemove / onTrigger → 引用 scripts
+  └── effects: Record<string, number> ← 简单数值效果 (保留)
+```
+
+### 层数控制
+
+| 配置 | 行为 |
+|------|------|
+| 无 stackable/maxStacks | 自由叠加 (现状) |
+| `stackable: false` | 永远 1 层，重复施加只刷新时间 |
+| `maxStacks: N` | 累加到 N 停止 |
+| 两者合用 | `stackable: false, maxStacks: 1` = 不可叠 |
+
+### 脚本沙盒 API
+
+```typescript
+executeScript(script, context)
+  └── buildSandbox()
+        ├── owner / target / event / self   ← 上下文变量
+        ├── $dice:   { d20, d100, roll }    ← 骰子系统
+        ├── $resource: { getHp, getMaxHp, modifyHp, modifyStat }
+        ├── $status: { add, remove, setStacks, getStacks }  ← 套娃核心
+        └── $event: { emit }                ← 触发事件
+```
+
+### 套娃机制
+
+脚本通过 `$status.add()` 创建新状态，新状态带自己的 scripts：
+
+```
+灼烧之剑.scripts["hit"]
+  → $status.add(target, { name:"灼烧", scripts:{tick:"..."}, onTick:"tick" })
+    → 灼烧.onTick → scripts["tick"]
+      → $resource.modifyHp(owner, -5%)
+      → $status.add(owner, { name:"余烬", scripts:{tick:"..."}, onTick:"tick" })
+        → 余烬.onTick → scripts["tick"] → $resource.modifyHp(owner, -2)
+```
+
+无限套娃，无字符串转义问题。
+
+### 作用域
+
+- 物品的 scripts 只能引用自己 scripts 里的脚本
+- 状态的 scripts 只能引用自己 scripts 里的脚本
+- 局部作用域，不跨对象
+
+### ScriptEffects 收集器
+
+脚本执行不直接修改状态，而是收集变更。调用方在脚本执行后统一处理：
+
+```typescript
+ScriptEffects {
+  adds:        { charId, effect }[]         // $status.add()
+  removes:     { charId, effectId }[]       // $status.remove()
+  stackSets:   { charId, effectId, stacks }[] // $status.setStacks()
+  hpChanges:   { charId, amount }[]         // $resource.modifyHp()
+  statChanges: { charId, stat, amount }[]   // $resource.modifyStat()
+  events:      { eventType, data }[]        // $event.emit()
+}
+```
+
+### 钩子执行
+
+```typescript
+// 回合结束时执行所有状态的 onTick
+executeHook(character.statusEffects, 'onTick', { owner: charId, event: { turn: 3 } })
+
+// 施加时执行 onApply
+executeHook([newEffect], 'onApply', { owner: charId })
+```
+
+---
+
+## 六、前端展示
+
+前端不改动逻辑，纯粹展示 AI 写的中文：
+
+```vue
+<!-- 物品的效果词条 -->
+<div v-for="(desc, name) in item.effects" :key="name" class="effect-row">
+  <span class="effect-key">{{ name }}</span>
+  <span class="effect-value">{{ desc }}</span>
+</div>
+
+<!-- 状态效果用 BuffChip -->
+<BuffChip :name="status.name" :type="status.category" :stacks="status.stacks" />
+```
+
+---
+
+## 七、Agent 模板指示
+
+AI (item_gen / vars_update) 生成物品/状态时需遵循：
+
+```
+输出格式:
+{
+  "效果": { "锐利": "攻击力 +15%", "灼烧": "命中时50%附加灼烧" },
+  "scripts": {
+    "hit": "if($dice.d100()<=50){$status.add(target,灼烧状态对象)}",
+    "burn_tick": "$resource.modifyHp(owner,-floor($resource.maxHp(owner)*0.05))"
+  },
+  "effects": [
+    { "name": "灼烧印记", "onTrigger": "hit" }
+  ]
+}
+
+$ API 可用:
+  $dice.d20() / $dice.d100()  — 骰子
+  $resource.modifyHp(id, amount)  — 修改HP (负数为伤害)
+  $resource.modifyStat(id, stat, amount)  — 修改属性
+  $status.add(id, {name, scripts, onTick, ...})  — 添加状态
+  $status.remove(id, effectName)  — 移除状态
+  $status.setStacks(id, effectName, n)  — 设置层数
+  $event.emit(type, data)  — 触发事件
+
+上下文变量:
+  owner  — 效果持有者
+  target — 事件目标
+  self   — 当前效果自身 { stacks, remainingTime, name }
+  event  — 触发事件数据
+```
+
+---
+
+## 八、全局时间系统 (Phase 7e+8)
+
+### 数据模型
+
+```typescript
+// SaveProfile — 存档级全局时间
+gameTime: GameTime  // { era, year, month, day, weekday, hour, minute }
+
+// StatusEffect — 剩余时间
+remainingTime: number | null;  // null = 永久
+timeUnit: '回合' | '分钟' | '小时';
+```
+
+### 时间推进流程
+
+```
+Story AI 输出
+  ↓
+vars_update Agent 提取
+  └── { "delta_time": 180 }  // 分钟
+  ↓
+AgentOrchestrator Stage 2 后处理
+  └── StateManager.applyTimeAdvance(180)
+      ├── SaveProfile.gameTime = advanceTime(gameTime, 180)
+      ├── 遍历所有 CharacterState.statusEffects
+      │   ├── remainingTime === null → 跳过（永久）
+      │   ├── timeUnit === '回合' → 跳过（战斗结算管）
+      │   ├── timeUnit === '分钟' → remainingTime -= 180
+      │   ├── timeUnit === '小时' → remainingTime -= 3
+      │   └── remainingTime <= 0 → removeEffect + onRemove 脚本
+      └── emit('time_advanced')
+```
+
+### 层数控制
+
+| 字段 | 行为 |
+|------|------|
+| `stackable: false` | 永远 1 层，重复施加只刷新时间 |
+| `maxStacks: N` | 累加到 N 停止 |
+| 默认 | 无上限累加 |
+```

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useCreateStore } from '../../stores/create-store'
 import { ATTRIBUTE_NAMES } from '@engine/start-catalog'
 import FormInput from '../shared/form/FormInput.vue'
@@ -8,6 +9,9 @@ import ResourceBar from '../shared/ResourceBar.vue'
 import AttributeEditor from './AttributeEditor.vue'
 
 const store = useCreateStore()
+
+/** 三条资源条的最大值，用于统一比例尺 */
+const peakMax = computed(() => Math.max(store.hpPreview, store.mpPreview, store.spPreview, 1))
 </script>
 
 <template>
@@ -95,13 +99,25 @@ const store = useCreateStore()
           </div>
         </div>
 
-        <!-- ResourceBar 预览 (比原版好的功能，保留) -->
+        <!-- ResourceBar 预览 (统一比例尺: 以三项中最大值为 100%) -->
         <div class="preview-section">
           <h3 class="section-label">资源预览</h3>
           <div class="preview-bars">
-            <ResourceBar label="HP" :current="store.hpPreview" :max="store.hpPreview" color="var(--theme-hp, #e74c3c)" />
-            <ResourceBar label="MP" :current="store.mpPreview" :max="store.mpPreview" color="var(--theme-mp, #3498db)" />
-            <ResourceBar label="SP" :current="store.spPreview" :max="store.spPreview" color="var(--theme-sp, #f1c40f)" />
+            <div class="preview-row">
+              <span class="preview-label">HP</span>
+              <span class="preview-nums">{{ store.hpPreview }} / {{ store.hpPreview }}</span>
+              <ResourceBar label="" :current="store.hpPreview" :max="peakMax" color="var(--theme-hp, #e74c3c)" :show-values="false" :height="16" />
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">MP</span>
+              <span class="preview-nums">{{ store.mpPreview }} / {{ store.mpPreview }}</span>
+              <ResourceBar label="" :current="store.mpPreview" :max="peakMax" color="var(--theme-mp, #3498db)" :show-values="false" :height="16" />
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">SP</span>
+              <span class="preview-nums">{{ store.spPreview }} / {{ store.spPreview }}</span>
+              <ResourceBar label="" :current="store.spPreview" :max="peakMax" color="var(--theme-sp, #f1c40f)" :show-values="false" :height="16" />
+            </div>
           </div>
         </div>
 
@@ -296,7 +312,27 @@ const store = useCreateStore()
 .preview-bars {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+.preview-row {
+  display: grid;
+  grid-template-columns: 28px 72px minmax(0, 1fr);
+  gap: var(--theme-spacing-sm);
+  align-items: center;
+}
+.preview-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--theme-text-secondary);
+  text-transform: uppercase;
+  text-align: right;
+}
+.preview-nums {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--theme-text-muted);
+  text-align: center;
+  white-space: nowrap;
 }
 
 /* ===== 经济 ===== */

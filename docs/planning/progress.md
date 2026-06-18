@@ -357,3 +357,98 @@ Stage 5: plot_post_check
 - ✅ 范围: -100 ~ +100 (对齐 #966681)
 - ✅ 标签: 11 级命名区间 (对齐 #966681)
 - ✅ 简化标签: 友好/中立/敌对 三档（供简易 UI 使用）
+
+### Phase 7d: 捏人页 — 暂结标记
+- **Status:** complete ✅ (暂结，后续到 Phase 8 继续改)
+- **Marked:** 2026-06-17
+- 已完成: 6 项快速改进 + 剧情偏向 8 选项 + 难度单选组 + 背景 <user> 替换
+- 待完善: 更多捏人细节留到 Phase 8 之后迭代
+
+---
+*Last updated: 2026-06-17*
+
+## Session: 2026-06-17
+
+### Phase 7d 修复 (6 项快速改进)
+- **Status:** complete ✅
+- Actions taken:
+  - ✅ **修复 1**: `CreateSteps.vue` step-num 数字可见性 — 删除父级 `opacity:0.35`，改用固定灰色 `#888`/`#999`，白色/深色主题均清晰
+  - ✅ **修复 2**: 等级提升消耗转生点 — `create-store.ts` totalCost 加入 `usedAP`（对齐原版 custom_start_index.html）+ 新增 `levelCost = (Lv-1)×5`
+  - ✅ **修复 3**: 创造模式转生点 ×100 — `start-catalog.ts` creative: 10000 → 1000000
+  - ✅ **修复 4**: 背景故事 `<user>` 替换 — `create-store.ts` 新增 `substituteUser()`，`BackgroundList.vue` 导入使用，自动替换为角色名
+  - ✅ **修复 5**: 剧情偏向 4→8 选项 — `CreateStepPlot.vue` 扩展为 8 genre（对齐设置页），chip 卡片样式
+  - ✅ **修复 6**: 难度层级改单选组 — `CreateStepPlot.vue` FormStepper→单选按钮(自适应+T2-T7)，添加持续年份/难度解释小字；`types.ts` difficultyTier 改为可选
+  - ✅ **配套修复**: `variables.css` 新增 `--theme-color-primary` 别名（20+ 组件引用此名但从未定义）
+  - ✅ **ResourceBar 预览**: `CreateStepBasic.vue` 用 `peakMax` 统一比例尺 + 添加数值文本显示
+- Files modified:
+  - src/ui/components/create/CreateSteps.vue
+  - src/ui/components/create/CreateStepBasic.vue
+  - src/ui/components/create/CreateStepPlot.vue
+  - src/ui/components/create/BackgroundList.vue
+  - src/ui/components/create/AttributeEditor.vue
+  - src/ui/stores/create-store.ts
+  - src/sillytavern/start-catalog.ts
+  - src/sillytavern/types.ts
+  - src/ui/themes/variables.css
+
+### 架构改造: 多 URL Router → 单 URL Store 驱动
+- **Status:** complete ✅
+- Actions taken:
+  - ✅ `ui-store.ts` 新增 `currentView` / `activeSaveId` / `navigate()` 导航系统
+  - ✅ `App.vue` `<router-view>` → `<component :is>` 基于 `ui.currentView` 切换
+  - ✅ `main.ts` 删除 router 注册
+  - ✅ `HomePage.vue` 3 处 `router.push` → `ui.navigate()`
+  - ✅ `CreatePage.vue` 1 处动态 `router.push` → `ui.navigate('game', saveId)`
+  - ✅ `SettingsPage.vue` 1 处 `router.push('/')` → `ui.navigate('home')`
+  - ✅ `router/` 文件夹已删除
+  - ✅ **vitest.config.ts** 新增 `@vitejs/plugin-vue` 插件 + `resolve.alias`（`@engine`/`@ui`）
+- 结果: 浏览器地址栏永远 `localhost:5174/`，页面切换纯状态驱动
+
+### 设置持久化系统
+- **Status:** complete ✅
+- Actions taken:
+  - ✅ **`settings-store.ts`** (新建, ~100 行): 通用 key-value 自动持久化 store
+    - 设计: 一个 `settings` ref 装所有设置，`deep watch` 任意属性改动 → 自动写 `localStorage`
+    - **扩展性**: 以后加新设置只需在组件写 `s.新字段 = 值`，零 store 改动
+  - ✅ `SettingsPage.vue` 大规模重构: 所有组件内 `ref()` 迁移到 `s.xxx`，即时自动保存
+  - ✅ 记忆设置: 4 个 hardcoded value → v-model 绑定 `s.memoryRecallCount` 等
+  - ✅ 存储用量: "存档数据"区新增 📊 卡片，调用 `navigator.storage.estimate()` 显示已用/总量
+
+### UI 测试体系建设
+- **Status:** complete ✅
+- Actions taken:
+  - ✅ `npm install -D jsdom` — 组件测试 DOM 环境
+  - ✅ **6 个新测试文件** (107 tests):
+    - `create-store.test.ts` — 75 tests (难度/等级/BP/AP/属性/HP预览/消耗/装备/道具/技能/背景/提交/预设/重置/导航)
+    - `AttributeEditor.test.ts` — 6 tests
+    - `SelectableCard.test.ts` — 10 tests
+    - `ResourceBar.test.ts` — 8 tests
+    - `PointsBar.test.ts` — 4 tests
+    - `CreateSteps.test.ts` — 4 tests
+  - ✅ **2085 tests | 47 files | 编译 0 错误**
+
+### Bug 修复: 设置页空白
+- **根因**: sed 批量替换 `apiPool`→`s.apiPool` 时漏掉了 `v-for` 和 `v-if` 绑定
+- **修复**: `SettingsPage.vue` 两行模板 `v-for="ep in apiPool"`→`v-for="ep in s.apiPool"`、`v-for="p in presets"`→`v-for="p in s.presets"`
+
+### 小改进
+- ✅ **settings-store.test.ts** (新建, 7 tests) — 冒烟测试 + mock localStorage
+- ✅ **CreatePage.vue** 左上角新增"← 首页"返回按钮 — Pinia store 跨页面保活，无需提醒保存
+- ✅ **测试总数: 2092 tests | 48 files**
+
+---
+
+## 📋 Session 错误总结 (2026-06-17)
+
+本 session Claude 犯的 7 个错误，原因和教训：
+
+| # | 错误 | 根因 | 教训 |
+|---|------|------|------|
+| 1 | `--theme-color-primary` 变量不存在 | 假设变量名存在，未在主题文件里 grep 验证 | 写 CSS 前先确认 CSS 变量名来源 |
+| 2 | `opacity:0.35` 导致 step 数字不可见 | 没注意到父元素 opacity 会洗掉子元素颜色 | 排查"看不见"先检查父级 CSS 透明度 |
+| 3 | ResourceBar current/max 传同一值 | 没仔细看调用方传参：`:current="hpPreview" :max="hpPreview"` | 写模板绑定前确认当前值是 max 还是相同值 |
+| 4 | `<user>` 只在 buildOpeningPrompt 里替换 | 忘了背景文字在 BackgroundList.vue 里也有展示路径 | 搜索所有使用点，不只修最明显的那个 |
+| 5 | sed 批量替换漏掉 `v-for` 绑定 | `sed 's/apiPool/s.apiPool/g'` 不会匹配 `v-for="ep in apiPool"` | 批量替换后用 grep 验证没有遗漏 |
+| 6 | settings-store 测试缺 `await nextTick()` | Vue watch deep 回调是异步排队的，不是同步 | store 的 deep watch 测试需要 `await nextTick()` |
+| 7 | vitest.config.ts 缺 resolve.alias | vite.config.ts 配了别名但 vitest.config.ts 没同步 | 新增路径别名时要检查所有配置文件 |
+

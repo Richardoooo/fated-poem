@@ -17,7 +17,12 @@ docs/
 ├── phases/                      # Phase 计划
 │   ├── phase4_plan.md           # Phase 4 记忆系统 & 剧情规划
 │   ├── phase7/                  # Phase 7 前端 UI 总体规格
-│   └── phase7d/                 # Phase 7d 捏人页架构/现状/差距分析
+│   ├── phase7d/                 # Phase 7d 捏人页架构/现状/差距分析
+│   └── phase7e/                 # Phase 7e 游戏页
+│       └── game_page_design.md  # 游戏页设计规划 + 引擎支撑审计（7e 必读）
+├── reference/                   # 参考页面架构分析
+│   ├── status_page_architecture.md  # 状态栏页面架构（7e 必读）
+│   └── effect_script_system.md      # 词条效果 & 脚本系统架构（引擎必读）
 └── 《命定之诗》内容二创与素材使用授权协议.md  # 项目需遵守的外部授权
 ```
 
@@ -313,20 +318,20 @@ SubSystem-CharGen 角色 → Stage2 vars_update 异步检测新NPC
 | 7a | 工程搭建 (Vite + Vue 3 + Pinia + Router) | ✅ |
 | 7b | 主题系统 + 通用组件 (10主题/15组件) | ✅ |
 | 7c | 首页 (标题画面风格) + 设置页 (8分区) | ✅ |
-| 7d | 捏人页 `/create` | ⬜ |
-| 7e | 游戏页 `/game/:id` + 状态栏 HUD | ⬜ |
+| 7d | 捏人页 `/create` | ✅ (暂结，后续继续改) |
+| 7e | 游戏页 + 状态栏 HUD + 脚本引擎 | 🔄 |
 | 7f | 创意工坊 `/workshop` | ⬜ |
 | 7g | 衔接 & 测试 | ⬜ |
 | 8 | Agent 上下文可见性 & Prompt 体系 | ⬜ |
 | 9 | 集成测试 & 交付 | ⬜ |
 
-**当前: 1978 tests | 41 test files | 编译 0 错误 | UI: 10主题/15组件/2页面**
+**当前: 2121 tests | 50 test files | 编译 0 错误 | UI: 10主题/16组件/4页面 | 单URL架构 | 脚本引擎 | 全局时间系统**
 
-## 前端架构 (Phase 7, 2026-06-16)
+## 前端架构 (Phase 7, 2026-06-17)
 
 ```
-src/ui/                              ← Vue 3 + Pinia + Vite 前端
-├── main.ts                          ← 应用入口 (createApp + Pinia + Router + 主题初始化)
+src/ui/                              ← Vue 3 + Pinia + Vite 前端 (单 URL 状态驱动)
+├── main.ts                          ← 应用入口 (createApp + Pinia + 主题初始化)
 ├── App.vue                          ← 根组件 (<router-view> + ToastContainer)
 ├── env.d.ts                         ← .vue 类型声明
 │
@@ -338,11 +343,10 @@ src/ui/                              ← Vue 3 + Pinia + Vite 前端
 │
 ├── stores/                          ← Pinia 状态管理
 │   ├── theme-store.ts               ← 主题切换 + 字体风格 + 字体大小 (localStorage 持久化)
-│   ├── ui-store.ts                  ← UI 状态 (侧栏/弹窗/Toast)
+│   ├── ui-store.ts                  ← UI 状态 (侧栏/弹窗/Toast) + 导航 (currentView)
+│   ├── settings-store.ts            ← 设置持久化 (通用 KV, deep watch → localStorage, 扩展零改动)
 │   ├── create-store.ts              ← 捏人页 (属性联动 computed: tier/tierBonus/BP/AP)
 │   └── game-store.ts                ← 游戏状态 (存档/角色/对话/战斗/FP)
-│
-├── router/index.ts                  ← Vue Router (5 路由 + 懒加载 + saveId 守卫)
 │
 ├── components/
 │   ├── shared/                      ← 15 个通用组件

@@ -8,7 +8,10 @@
  * - 自定义开局 → 选中后展开 textarea
  */
 import { computed } from 'vue'
+import { useCreateStore } from '../../stores/create-store'
 import type { BackgroundTemplate } from '@engine/start-catalog'
+
+const store = useCreateStore()
 
 const props = defineProps<{
   backgrounds: BackgroundTemplate[]
@@ -129,7 +132,7 @@ const selectedId = computed(() => props.modelValue?.id ?? null)
       </div>
 
       <!-- 描述预览 (截断) -->
-      <p class="bg-desc">{{ bg.description }}</p>
+      <p class="bg-desc">{{ store.substituteUser(bg.description) }}</p>
 
       <!-- 不满足条件警告 -->
       <div v-if="!checkConditions(bg).valid" class="bg-warning">

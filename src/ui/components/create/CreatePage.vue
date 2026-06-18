@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue'
 import { useCreateStore } from '../../stores/create-store'
+import { useUIStore } from '../../stores/ui-store'
 import CreateSteps from './CreateSteps.vue'
 import CreateFooter from './CreateFooter.vue'
 import PointsBar from './PointsBar.vue'
 import PresetModal from './PresetModal.vue'
 
 const store = useCreateStore()
+const ui = useUIStore()
 
 // 懒加载步骤组件
 const Step0 = defineAsyncComponent(() => import('./CreateStepDifficulty.vue'))
@@ -30,8 +32,7 @@ async function handleNext() {
   if (store.currentStep === 6) {
     try {
       const saveId = await store.startJourney()
-      const { router } = await import('../../router')
-      router.push(`/game/${saveId}`)
+      ui.navigate('game', saveId)
     } catch (err) {
       console.error('[CreatePage] 创建存档失败:', err)
     }
@@ -43,6 +44,8 @@ async function handleNext() {
 
 <template>
   <div class="create-page">
+    <button class="back-btn" @click="ui.navigate('home')" title="返回首页">← 首页</button>
+
     <CreateSteps :current="store.currentStep" :total="7" />
 
     <PointsBar
@@ -75,10 +78,31 @@ async function handleNext() {
 
 <style scoped>
 .create-page {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--theme-bg-primary);
+}
+.back-btn {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 10;
+  padding: 4px 12px;
+  border: 1px solid var(--theme-card-border);
+  border-radius: var(--theme-radius-md);
+  background: var(--theme-card-bg);
+  color: var(--theme-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--theme-transition-fast);
+}
+.back-btn:hover {
+  border-color: var(--theme-primary);
+  color: var(--theme-primary);
+  background: color-mix(in srgb, var(--theme-primary) 8%, var(--theme-card-bg));
 }
 .create-content {
   flex: 1;

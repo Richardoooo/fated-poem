@@ -8,7 +8,20 @@ export interface Toast {
   duration: number
 }
 
+/** 所有页面视图 */
+export type AppView = 'home' | 'create' | 'game' | 'settings' | 'workshop'
+
 export const useUIStore = defineStore('ui', () => {
+  // ===== 导航 =====
+  const currentView = ref<AppView>('home')
+  const activeSaveId = ref<string | null>(null)
+
+  function navigate(view: AppView, saveId?: string) {
+    if (saveId !== undefined) activeSaveId.value = saveId
+    currentView.value = view
+  }
+
+  // ===== UI 状态 =====
   const statusBarOpen = ref(false)
   const statusTab = ref('status')
   const leftSidebarOpen = ref(true)
@@ -53,6 +66,7 @@ export const useUIStore = defineStore('ui', () => {
   }
 
   return {
+    currentView, activeSaveId, navigate,
     statusBarOpen, statusTab,
     leftSidebarOpen, rightSidebarOpen,
     activeModal, toasts,

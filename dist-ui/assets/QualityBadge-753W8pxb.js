@@ -1,0 +1,2 @@
+import{d as s,b as l,c as o,x as c,n as i,t as n,q as r,s as u}from"./index-Sv8XOvSG.js";const y=s({__name:"QualityBadge",props:{quality:{},size:{}},setup(a){const t=a,e=r(()=>`var(--theme-quality-${t.quality})`);return(m,d)=>(l(),o("span",{class:i(["quality-badge",[`badge-${a.size||"sm"}`,`quality-${a.quality}`]]),style:c({color:e.value,borderColor:e.value})},n(a.quality),7))}}),q=u(y,[["__scopeId","data-v-95aa4674"]]);export{q as Q};
+//# sourceMappingURL=QualityBadge-753W8pxb.js.map

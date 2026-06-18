@@ -31,6 +31,16 @@ export const useGameStore = defineStore('game', () => {
   const saveProfile = ref<SaveProfile | null>(null)
   const fp = computed(() => saveProfile.value?.fp || 0)
 
+  // === UI 布局状态 (Phase 7e) ===
+  const sidebarCollapsed = ref(false)
+  const activeModal = ref<string | null>(null)
+  const fullscreenStatus = ref(false)
+
+  function toggleSidebar() { sidebarCollapsed.value = !sidebarCollapsed.value }
+  function showModal(id: string) { activeModal.value = id }
+  function closeModal() { activeModal.value = null }
+  function toggleFullscreen() { fullscreenStatus.value = !fullscreenStatus.value }
+
   // === 动作 ===
   async function loadSaves() {
     saves.value = await getSaves()
@@ -81,6 +91,8 @@ export const useGameStore = defineStore('game', () => {
     recentMemories, activePlotEvents, plotOutline,
     activeCombat, isInCombat,
     saveProfile, fp,
+    sidebarCollapsed, activeModal, fullscreenStatus,
+    toggleSidebar, showModal, closeModal, toggleFullscreen,
     loadSaves, loadSave, clearActive,
   }
 })

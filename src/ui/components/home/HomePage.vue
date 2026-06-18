@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useGameStore } from '../../stores/game-store'
 import { useUIStore } from '../../stores/ui-store'
 import { VERSION } from '@engine/index'
 import AppButton from '../shared/AppButton.vue'
 import AppModal from '../shared/AppModal.vue'
 
-const router = useRouter()
 const game = useGameStore()
 const ui = useUIStore()
 
@@ -77,12 +75,19 @@ onMounted(async () => {
 onUnmounted(() => { if (quoteTimer) clearInterval(quoteTimer) })
 
 function newGame() {
-  router.push('/create')
+  ui.navigate('create')
 }
 
 function loadGame(saveId: string) {
   showSaveModal.value = false
-  router.push(`/game/${saveId}`)
+  ui.navigate('game', saveId)
+}
+
+// 🧪 开发用快速测试 (正式版移除)
+async function quickTest() {
+  const { createTestSave } = await import('../../utils/test-save')
+  const saveId = await createTestSave()
+  ui.navigate('game', saveId)
 }
 
 async function deleteSave(saveId: string) {
@@ -144,11 +149,15 @@ function formatTime(ts: number) {
           读 取 存 档
         </AppButton>
         <div class="btn-row">
-          <AppButton variant="ghost" size="md" @click="router.push('/settings')">
+          <AppButton variant="ghost" size="md" @click="ui.navigate('settings')">
             设 置
           </AppButton>
           <AppButton variant="ghost" size="md" @click="showCreditsModal = true">
             制作人员
+          </AppButton>
+          <!-- 🧪 开发用快速测试按钮 (正式版移除) -->
+          <AppButton variant="ghost" size="md" class="dev-test-btn" @click="quickTest">
+            🧪 快速测试
           </AppButton>
         </div>
       </div>

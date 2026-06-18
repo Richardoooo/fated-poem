@@ -69,9 +69,9 @@ const barColor = computed(() => props.color || 'var(--theme-hp)')
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--theme-text-primary);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--theme-resource-text, var(--theme-text-primary));
+  z-index: 1;
 }
 </style>

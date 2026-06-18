@@ -55,12 +55,10 @@ const STEP_LABELS = [
   padding: 4px var(--theme-spacing-sm);
   border-radius: var(--theme-radius-sm);
   transition: all var(--theme-transition-fast);
-  opacity: 0.35;
   min-width: 56px;
 }
 .step-dot.active,
 .step-dot.done {
-  opacity: 1;
   cursor: pointer;
 }
 .step-num {
@@ -72,26 +70,32 @@ const STEP_LABELS = [
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 700;
-  background: var(--theme-card-border);
-  color: var(--theme-text-muted);
+  background: transparent;
+  color: #888;
+  border: 2px solid #999;
   transition: all var(--theme-transition-fast);
 }
 .active .step-num {
   background: var(--theme-color-primary);
+  border-color: var(--theme-color-primary);
   color: #fff;
 }
 .done .step-num {
   background: var(--theme-color-primary);
+  border-color: var(--theme-color-primary);
   color: #fff;
   opacity: 0.7;
 }
 .step-label {
   font-size: 0.6rem;
   white-space: nowrap;
-  color: var(--theme-text-secondary);
+  color: #999;
 }
 .active .step-label {
   color: var(--theme-text-primary);
   font-weight: 600;
+}
+.done .step-label {
+  color: var(--theme-text-secondary);
 }
 </style>

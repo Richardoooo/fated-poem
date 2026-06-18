@@ -6,7 +6,7 @@
  * addAchievement / addNews / markNewsRead
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SaveProfile, FPTransaction, FateContract, Achievement, NewsItem } from './types';
+import type { SaveProfile, FPTransaction, FateContract, Achievement, NewsItem, Quest, MapMarker } from './types';
 
 // ---- Mocks ----
 const mockGetSaveProfile = vi.fn();
@@ -36,6 +36,8 @@ import {
 
 // ---- Helpers ----
 
+import { createDefaultTime } from './time-system';
+
 function makeProfile(overrides: Partial<SaveProfile> = {}): SaveProfile {
   return {
     saveId: 'save_test',
@@ -44,6 +46,10 @@ function makeProfile(overrides: Partial<SaveProfile> = {}): SaveProfile {
     contracts: [],
     achievements: [],
     news: [],
+    quests: {},
+    focusQuest: '',
+    affections: {},
+    gameTime: createDefaultTime(),
     worldFlags: {},
     updatedAt: Date.now(),
     ...overrides,
@@ -58,6 +64,10 @@ function makeDefaultProfile(saveId: string): SaveProfile {
     contracts: [],
     achievements: [],
     news: [],
+    quests: {},
+    focusQuest: '',
+    affections: {},
+    gameTime: createDefaultTime(),
     worldFlags: {},
     updatedAt: Date.now(),
   };
@@ -672,5 +682,171 @@ describe('chained operations', () => {
 
     const notFound = getContractByTarget(updated, 'other');
     expect(notFound).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Quest 测试 (Phase 7e)
+// ═══════════════════════════════════════════════════════════
+
+import {
+  getQuests,
+  getQuest,
+  setQuest,
+  removeQuest,
+  getActiveQuests,
+  getSortedQuests,
+} from './save-profile';
+
+describe('Quest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('getQuests returns empty object for new profile', () => {
+    const profile = makeProfile();
+    expect(getQuests(profile)).toEqual({});
+  });
+
+  it('setQuest creates a new quest', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    const updated = await setQuest(profile, '追查失踪商队', {
+      status: '进行中',
+      priority: '高',
+      objective: '找到失踪的商队',
+    });
+
+    expect(updated.quests['追查失踪商队'].status).toBe('进行中');
+    expect(updated.quests['追查失踪商队'].priority).toBe('高');
+    expect(updated.quests['追查失踪商队'].progress).toBe('');  // default
+  });
+
+  it('setQuest updates existing quest partially', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setQuest(profile, 'q1', { status: '进行中', priority: '高', objective: '目标A' });
+    const updated = await setQuest(profile, 'q1', { progress: '找到了线索', status: '已完成' });
+
+    expect(updated.quests['q1'].status).toBe('已完成');
+    expect(updated.quests['q1'].progress).toBe('找到了线索');
+    expect(updated.quests['q1'].objective).toBe('目标A');  // unchanged
+  });
+
+  it('removeQuest deletes a quest', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setQuest(profile, 'q1', { status: '进行中' });
+    expect(profile.quests['q1']).toBeDefined();
+
+    const updated = await removeQuest(profile, 'q1');
+    expect(updated.quests['q1']).toBeUndefined();
+  });
+
+  it('getActiveQuests filters out 已完成 and 失败', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setQuest(profile, 'active1', { status: '进行中', priority: '高' });
+    await setQuest(profile, 'active2', { status: '搁置', priority: '中' });
+    await setQuest(profile, 'done1', { status: '已完成', priority: '低' });
+    await setQuest(profile, 'fail1', { status: '失败', priority: '高' });
+
+    const active = getActiveQuests(profile);
+    expect(active).toHaveLength(2);
+    expect(active.map(([n]) => n)).toEqual(['active1', 'active2']);
+  });
+
+  it('getSortedQuests sorts by priority then name', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setQuest(profile, 'B任务', { priority: '中' });
+    await setQuest(profile, 'A任务', { priority: '高' });
+    await setQuest(profile, 'C任务', { priority: '中' });
+    await setQuest(profile, 'D任务', { priority: '低' });
+
+    const sorted = getSortedQuests(profile);
+    expect(sorted.map(([n]) => n)).toEqual(['A任务', 'B任务', 'C任务', 'D任务']);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// Map Marker 测试 (Phase 7e)
+// ═══════════════════════════════════════════════════════════
+
+import {
+  getMapMarkers,
+  getMapMarker,
+  setMapMarker,
+  removeMapMarker,
+} from './save-profile';
+
+describe('MapMarker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const makeMarker = (overrides: Partial<MapMarker> = {}): MapMarker => ({
+    id: 'm1',
+    name: '测试标记',
+    position: { nx: 0.5, ny: 0.3 },
+    ...overrides,
+  });
+
+  it('getMapMarkers returns empty array for new profile', () => {
+    const profile = makeProfile();
+    expect(getMapMarkers(profile)).toEqual([]);
+  });
+
+  it('setMapMarker adds a new marker', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    const marker = makeMarker();
+    const updated = await setMapMarker(profile, marker);
+
+    expect(getMapMarkers(updated)).toHaveLength(1);
+    expect(getMapMarker(updated, 'm1')!.name).toBe('测试标记');
+  });
+
+  it('setMapMarker updates existing marker by id', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setMapMarker(profile, makeMarker({ name: '旧名称' }));
+    const updated = await setMapMarker(profile, makeMarker({ name: '新名称' }));
+
+    expect(getMapMarkers(updated)).toHaveLength(1);
+    expect(getMapMarker(updated, 'm1')!.name).toBe('新名称');
+  });
+
+  it('removeMapMarker deletes a marker', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setMapMarker(profile, makeMarker({ id: 'a' }));
+    await setMapMarker(profile, makeMarker({ id: 'b' }));
+    expect(getMapMarkers(profile)).toHaveLength(2);
+
+    const updated = await removeMapMarker(profile, 'a');
+    expect(getMapMarkers(updated)).toHaveLength(1);
+    expect(getMapMarker(updated, 'b')).toBeDefined();
+    expect(getMapMarker(updated, 'a')).toBeUndefined();
+  });
+
+  it('markers persist in worldFlags.mapMarkers', async () => {
+    const profile = makeProfile();
+    mockSaveSaveProfile.mockResolvedValue(undefined);
+
+    await setMapMarker(profile, makeMarker({ id: 'loc1', name: '艾瑟嘉德', position: { nx: 0.42, ny: 0.35 } }));
+
+    const raw = profile.worldFlags.mapMarkers as MapMarker[];
+    expect(raw).toHaveLength(1);
+    expect(raw[0].name).toBe('艾瑟嘉德');
+    expect(raw[0].position.nx).toBe(0.42);
   });
 });

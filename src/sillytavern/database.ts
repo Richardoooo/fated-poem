@@ -608,6 +608,8 @@ export async function deleteSaveProfile(saveId: string): Promise<void> {
   await getDatabase().saveProfiles.delete(saveId);
 }
 
+import { createDefaultTime } from './time-system';
+
 export function createDefaultSaveProfile(saveId: string): SaveProfile {
   return {
     saveId,
@@ -616,6 +618,10 @@ export function createDefaultSaveProfile(saveId: string): SaveProfile {
     contracts: [],
     achievements: [],
     news: [],
+    quests: {},
+    focusQuest: '',
+    affections: {},
+    gameTime: createDefaultTime(),
     worldFlags: {},
     updatedAt: Date.now(),
   };

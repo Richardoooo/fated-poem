@@ -245,9 +245,11 @@ export const useCreateStore = defineStore('create', () => {
   const skillCost = computed(() => selectedSkills.value.reduce((s, sk) => s + (sk.cost || 0), 0))
   const moneyCost = computed(() => Math.ceil(money.value / 100))
   const destinyCost = computed(() => Math.ceil(destinyPoints.value / 2))
+  const levelCost = computed(() => Math.max(0, level.value - 1) * 5)
 
   const totalCost = computed(() =>
     raceCost.value + identityCost.value +
+    levelCost.value + usedAP.value +
     equipmentCost.value + itemCost.value + skillCost.value +
     moneyCost.value + destinyCost.value
   )
@@ -491,8 +493,8 @@ export const useCreateStore = defineStore('create', () => {
   const plotMode = ref<'off' | 'side' | 'main'>('off')
   const plotDurationYears = ref(5)
   const plotAllowNonWorldbookNpc = ref(true)
-  const plotDifficultyTier = ref(1)
-  const plotGenrePreference = ref<Array<'combat' | 'mystery' | 'social' | 'romance'>>(['combat'])
+  const plotDifficultyTier = ref<number | 'adaptive'>('adaptive')
+  const plotGenrePreference = ref<Array<'combat' | 'mystery' | 'social' | 'romance' | 'exploration' | 'politics' | 'survival' | 'tragedy'>>(['combat'])
   const plotCustomPreference = ref('')
   const plotFocusRegion = ref('')
   const plotYearlyGeneration = ref(true)
@@ -502,10 +504,11 @@ export const useCreateStore = defineStore('create', () => {
   const plotSettings = computed<PlotSettings>(() => {
     const ps: PlotSettings = { mode: plotMode.value }
     if (plotMode.value === 'main') {
+      const tier = plotDifficultyTier.value === 'adaptive' ? undefined : plotDifficultyTier.value
       ps.main = {
         durationYears: plotDurationYears.value,
         allowNonWorldbookNpc: plotAllowNonWorldbookNpc.value,
-        difficultyTier: plotDifficultyTier.value,
+        ...(tier !== undefined ? { difficultyTier: tier } : {}),
         genrePreference: plotGenrePreference.value,
         customPreference: plotCustomPreference.value.trim() || '',
       }
@@ -523,6 +526,16 @@ export const useCreateStore = defineStore('create', () => {
     // 标记已请求生成，实际生成在 startJourney → game page 首回合
     isPlotGenerating.value = false  // 捏人页不做真实 AI 调用
     console.log('[create-store] 剧情大纲将在游戏开始后自动生成')
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 模板替换: <user> → 角色名
+  // ═══════════════════════════════════════════════════════
+
+  /** 将文本中的 &lt;user&gt; 替换为当前角色名（未填写时用 "你"） */
+  function substituteUser(text: string): string {
+    const userName = name.value.trim() || '你'
+    return text.replace(/<user>/g, userName)
   }
 
   // ═══════════════════════════════════════════════════════
@@ -614,9 +627,9 @@ export const useCreateStore = defineStore('create', () => {
     }
 
     if (selectedBackground.value) {
-      parts.push(`【角色背景】\n${JSON.stringify({ name: selectedBackground.value.name, text: selectedBackground.value.fullText })}`)
+      parts.push(`【角色背景】\n${JSON.stringify({ name: selectedBackground.value.name, text: substituteUser(selectedBackground.value.fullText) })}`)
     } else if (customBackgroundText.value.trim()) {
-      parts.push(`【角色背景】\n${JSON.stringify({ name: '自定义背景', text: customBackgroundText.value.trim() })}`)
+      parts.push(`【角色背景】\n${JSON.stringify({ name: '自定义背景', text: substituteUser(customBackgroundText.value.trim()) })}`)
     }
 
     if (destinyCore.value) {
@@ -727,8 +740,8 @@ export const useCreateStore = defineStore('create', () => {
       if (data.plotSettings.main) {
         plotDurationYears.value = data.plotSettings.main.durationYears
         plotAllowNonWorldbookNpc.value = data.plotSettings.main.allowNonWorldbookNpc
-        plotDifficultyTier.value = data.plotSettings.main.difficultyTier
-        plotGenrePreference.value = data.plotSettings.main.genrePreference
+        plotDifficultyTier.value = (data.plotSettings.main.difficultyTier ?? 'adaptive') as typeof plotDifficultyTier.value
+        plotGenrePreference.value = data.plotSettings.main.genrePreference as typeof plotGenrePreference.value
         plotCustomPreference.value = data.plotSettings.main.customPreference
       }
       if (data.plotSettings.side) {
@@ -757,7 +770,7 @@ export const useCreateStore = defineStore('create', () => {
     selectedBackground.value = null; customBackgroundText.value = ''
     plotOutline.value = null; isPlotGenerating.value = false
     plotMode.value = 'off'; plotDurationYears.value = 5
-    plotAllowNonWorldbookNpc.value = true; plotDifficultyTier.value = 1
+    plotAllowNonWorldbookNpc.value = true; plotDifficultyTier.value = 'adaptive'
     plotGenrePreference.value = ['combat']; plotCustomPreference.value = ''
     plotFocusRegion.value = ''; plotYearlyGeneration.value = true
     showPresetModal.value = false
@@ -782,7 +795,7 @@ export const useCreateStore = defineStore('create', () => {
     hpPreview, mpPreview, spPreview,
     // 经济
     reincarnationPoints, destinyPoints, money,
-    raceCost, identityCost, equipmentCost, itemCost, skillCost,
+    raceCost, identityCost, levelCost, equipmentCost, itemCost, skillCost,
     moneyCost, destinyCost, totalCost, remainingPoints,
     // 命定核心
     destinyCore, destinyCorePool, selectDestinyCore,
@@ -802,6 +815,8 @@ export const useCreateStore = defineStore('create', () => {
     generatePlotOutline,
     // 提交
     buildCharacterState, buildOpeningPrompt, startJourney,
+    // 模板
+    substituteUser,
     // 预设
     showPresetModal, presets, getCurrentPresetData, applyPresetData,
     // 重置

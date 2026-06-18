@@ -378,9 +378,31 @@ export class StateManager {
     // 检查是否已存在同 ID 效果 → 叠加层数
     const existing = char.statusEffects.find(e => e.id === effect.id);
     if (existing) {
-      existing.stacks += effect.stacks;
-      existing.remainingTime = Math.max(existing.remainingTime, effect.remainingTime);
+      // 🆕 不可叠加: 永远1层，只刷新时间
+      if (existing.stackable === false) {
+        existing.stacks = 1;
+        if (existing.remainingTime !== null && effect.remainingTime !== null) {
+          existing.remainingTime = Math.max(existing.remainingTime, effect.remainingTime);
+        } else if (effect.remainingTime === null) {
+          existing.remainingTime = null; // 新效果永久, 覆盖为永久
+        }
+      } else {
+        // 可叠加: 累加层数，有上限则 clamp
+        existing.stacks += effect.stacks;
+        if (existing.maxStacks && existing.maxStacks > 0) {
+          existing.stacks = Math.min(existing.stacks, existing.maxStacks);
+        }
+        if (existing.remainingTime !== null && effect.remainingTime !== null) {
+          existing.remainingTime = Math.max(existing.remainingTime, effect.remainingTime);
+        } else if (effect.remainingTime === null) {
+          existing.remainingTime = null;
+        }
+      }
     } else {
+      // 新效果: 初始层数 clamp 到 maxStacks
+      if (effect.maxStacks && effect.maxStacks > 0) {
+        effect.stacks = Math.min(effect.stacks, effect.maxStacks);
+      }
       char.statusEffects.push(effect);
     }
     await saveCharacter(char);
@@ -625,6 +647,97 @@ export class StateManager {
 
     return snapshot.id;
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 🆕 时间推进 & 状态效果结算 (Phase 7e+8)
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * 推进全局游戏时间，并自动结算所有角色的状态效果 remainingTime。
+   *
+   * @param minutes - 推进的分钟数
+   * @returns 生成的 StatePatch[] (remove_status_effect + time update)
+   */
+  async applyTimeAdvance(minutes: number): Promise<StatePatch[]> {
+    const patches: StatePatch[] = [];
+    if (minutes <= 0) return patches;
+
+    // 1. 更新 SaveProfile.gameTime
+    const { getProfile, updateProfile } = await import('./save-profile');
+    const { advanceTime } = await import('./time-system');
+    const { getCharacters, saveCharacter } = await import('./database');
+
+    const profile = await getProfile(this.saveId);
+    profile.gameTime = advanceTime(profile.gameTime, minutes);
+    await updateProfile(profile);
+
+    // 2. 遍历所有角色, 扣减 StatusEffect.remainingTime
+    const characters = await getCharacters(this.saveId);
+
+    for (const char of characters) {
+      let changed = false;
+
+      for (let i = char.statusEffects.length - 1; i >= 0; i--) {
+        const fx = char.statusEffects[i];
+
+        // 永久效果跳过
+        if (fx.remainingTime === null) continue;
+
+        // 战斗回合效果跳过 (由 combat 系统管理)
+        if (fx.timeUnit === '回合') continue;
+
+        // 按时间单位扣减
+        if (fx.timeUnit === '小时') {
+          fx.remainingTime -= Math.floor(minutes / 60);
+        } else {
+          fx.remainingTime -= minutes;
+        }
+
+        // 过期移除
+        if (fx.remainingTime <= 0) {
+          // 执行 onRemove 脚本
+          if (fx.onRemove && fx.scripts) {
+            const { executeScript } = await import('./script-executor');
+            const result = executeScript(fx.scripts[fx.onRemove]!, {
+              owner: char.id,
+              self: { stacks: fx.stacks, remainingTime: 0, name: fx.name },
+            });
+            patches.push(...convertScriptEffects(result));
+          }
+
+          char.statusEffects.splice(i, 1);
+          changed = true;
+
+          patches.push({
+            op: 'remove_status_effect',
+            target: `characters.${char.id}`,
+            value: fx.id,
+          });
+
+          this.createEvent('status_effect', {
+            op: 'remove_status_effect',
+            target: `characters.${char.id}`,
+            value: fx.id,
+          });
+        } else {
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        await saveCharacter(char);
+      }
+    }
+
+    // 3. emit time_advanced
+    this.createEvent('system', {
+      op: 'set_variable',
+      target: 'variables.gameTime',
+      value: profile.gameTime,
+    });
+
+    return patches;
+  }
 }
 
 // ========== 工厂函数 ==========
@@ -632,4 +745,20 @@ export class StateManager {
 /** 创建 StateManager 实例 */
 export function createStateManager(saveId: string, config?: Partial<StateManagerConfig>): StateManager {
   return new StateManager({ saveId, ...config });
+}
+
+// ═══════════════════════════════════════════════════════════
+// 辅助
+// ═══════════════════════════════════════════════════════════
+
+import type { ScriptEffects } from './script-executor';
+
+function convertScriptEffects(se: ScriptEffects): StatePatch[] {
+  const patches: StatePatch[] = [];
+  for (const a of se.adds) patches.push({ op: 'add_status_effect', target: `characters.${a.charId}`, value: a.effect as any });
+  for (const r of se.removes) patches.push({ op: 'remove_status_effect', target: `characters.${r.charId}`, value: r.effectId });
+  for (const s of se.stackSets) patches.push({ op: 'set_variable', target: `characters.${s.charId}.statusEffects`, value: { id: s.effectId, stacks: s.stacks } });
+  for (const h of se.hpChanges) patches.push({ op: 'delta_variable', target: `characters.${h.charId}.hp`, amount: h.amount });
+  for (const st of se.statChanges) patches.push({ op: 'delta_variable', target: `characters.${st.charId}.attributes.${st.stat}`, amount: st.amount });
+  return patches;
 }

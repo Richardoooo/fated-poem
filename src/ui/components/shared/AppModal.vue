@@ -4,7 +4,7 @@ import { watch, onMounted, onUnmounted } from 'vue'
 const props = defineProps<{
   open: boolean
   title?: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
   closable?: boolean
 }>()
 
@@ -73,7 +73,7 @@ function onOverlayClick(e: MouseEvent) {
   border: 1px solid var(--theme-card-border);
   border-radius: var(--theme-radius-xl);
   box-shadow: var(--theme-shadow-lg);
-  max-height: 80vh;
+  max-height: 90vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -81,6 +81,8 @@ function onOverlayClick(e: MouseEvent) {
 .modal-sm { width: min(90vw, 360px); }
 .modal-md { width: min(90vw, 520px); }
 .modal-lg { width: min(90vw, 720px); }
+.modal-xl { width: min(94vw, 1080px); }
+.modal-xxl { width: min(94vw, 1600px); max-height: 85vh; }
 
 .modal-header {
   padding: var(--theme-spacing-lg) var(--theme-spacing-xl);

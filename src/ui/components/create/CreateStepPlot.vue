@@ -8,10 +8,24 @@ import PlotOutlinePreview from './PlotOutlinePreview.vue'
 const store = useCreateStore()
 
 const GENRE_OPTIONS = [
-  { label: '战斗 (combat)', value: 'combat' },
-  { label: '悬疑 (mystery)', value: 'mystery' },
-  { label: '社交 (social)', value: 'social' },
-  { label: '恋爱 (romance)', value: 'romance' },
+  { label: '战斗', value: 'combat', desc: '侧重战斗冲突与力量成长' },
+  { label: '解谜', value: 'mystery', desc: '侧重悬疑推理与真相揭露' },
+  { label: '社交', value: 'social', desc: '侧重势力博弈与人际关系' },
+  { label: '恋爱', value: 'romance', desc: '侧重情感发展与羁绊建立' },
+  { label: '探索', value: 'exploration', desc: '侧重地图探索与未知发现' },
+  { label: '权谋', value: 'politics', desc: '侧重政治斗争与权力更迭' },
+  { label: '生存', value: 'survival', desc: '侧重资源管理与逆境求生' },
+  { label: '悲剧', value: 'tragedy', desc: '侧重命运无常与英雄陨落' },
+]
+
+const DIFFICULTY_OPTIONS = [
+  { label: '自适应', value: 'adaptive' as const, desc: '根据玩家的生命层级自动适配' },
+  { label: 'T2 中坚', value: 2 as const },
+  { label: 'T3 精英', value: 3 as const },
+  { label: 'T4 史诗', value: 4 as const },
+  { label: 'T5 传说', value: 5 as const },
+  { label: 'T6 神话', value: 6 as const },
+  { label: 'T7 神祇', value: 7 as const },
 ]
 </script>
 
@@ -27,17 +41,38 @@ const GENRE_OPTIONS = [
       ]" />
 
       <template v-if="store.plotMode === 'main'">
-        <FormStepper v-model="store.plotDurationYears" label="持续年份" :min="1" :max="20" />
-        <FormStepper v-model="store.plotDifficultyTier" label="难度层级" :min="1" :max="7" />
+        <div class="field-group">
+          <label class="field-label">持续年份</label>
+          <FormStepper v-model="store.plotDurationYears" :min="1" :max="20" />
+          <p class="field-hint">AI 会往后规划多少年的剧情</p>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">难度层级</label>
+          <p class="field-hint">主线的最高难度，生成的 NPC 和敌人不会大于此层级</p>
+          <div class="difficulty-options">
+            <button
+              v-for="o in DIFFICULTY_OPTIONS" :key="o.value"
+              class="difficulty-btn"
+              :class="{ active: store.plotDifficultyTier === o.value }"
+              @click="store.plotDifficultyTier = o.value"
+            >
+              {{ o.label }}
+              <span v-if="o.desc" class="difficulty-desc">{{ o.desc }}</span>
+            </button>
+          </div>
+        </div>
+
         <FormSelect v-model="store.plotAllowNonWorldbookNpc" label="外部NPC参与" :options="[
           { label: '允许', value: true }, { label: '禁止', value: false },
         ]" />
         <div class="genre-section">
           <label class="field-label">剧情偏向</label>
-          <div class="genre-tags">
-            <button
+          <p class="field-hint">选择一个或多个你喜欢的剧情方向，AI 会优先往这些方向发展。</p>
+          <div class="genre-grid">
+            <label
               v-for="g in GENRE_OPTIONS" :key="g.value"
-              class="genre-btn"
+              class="genre-chip"
               :class="{ active: store.plotGenrePreference.includes(g.value as any) }"
               @click="() => {
                 const arr = [...store.plotGenrePreference]
@@ -45,7 +80,10 @@ const GENRE_OPTIONS = [
                 i >= 0 ? arr.splice(i, 1) : arr.push(g.value as any)
                 store.plotGenrePreference = arr
               }"
-            >{{ g.label }}</button>
+            >
+              <span class="genre-chip-label">{{ g.label }}</span>
+              <span class="genre-chip-desc">{{ g.desc }}</span>
+            </label>
           </div>
         </div>
         <div class="field-group">
@@ -92,20 +130,66 @@ const GENRE_OPTIONS = [
 .step-plot { max-width: 560px; margin: 0 auto; }
 .step-title { font-family: var(--theme-font-title, serif); color: var(--theme-text-primary); font-size: 1.3rem; margin-bottom: var(--theme-spacing-md); }
 .plot-form { display: flex; flex-direction: column; gap: var(--theme-spacing-sm); }
-.genre-section { margin-bottom: var(--theme-spacing-xs); }
-.field-label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--theme-text-secondary); margin-bottom: 4px; }
-.genre-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.genre-btn {
-  padding: 3px 10px;
-  border: 1px solid var(--theme-card-border);
-  border-radius: var(--theme-radius-sm);
+
+/* ===== 字段提示文字 ===== */
+.field-group { margin-bottom: var(--theme-spacing-xs); }
+.field-label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--theme-text-secondary); margin-bottom: 2px; }
+.field-hint { font-size: 0.68rem; color: var(--theme-text-muted); margin: 2px 0 6px; line-height: 1.4; }
+
+/* ===== 难度层级单选按钮 ===== */
+.difficulty-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.difficulty-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1.5px solid var(--theme-card-border);
+  border-radius: var(--theme-radius-md);
   background: var(--theme-card-bg);
   color: var(--theme-text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--theme-transition-fast);
+  min-width: 64px;
 }
-.genre-btn.active { background: var(--theme-color-primary); color: #fff; border-color: var(--theme-color-primary); }
+.difficulty-btn:hover { border-color: var(--theme-color-primary); }
+.difficulty-btn.active {
+  background: var(--theme-color-primary);
+  color: #fff;
+  border-color: var(--theme-color-primary);
+}
+.difficulty-desc {
+  font-size: 0.6rem;
+  font-weight: 400;
+  opacity: 0.8;
+  margin-top: 1px;
+}
+
+/* ===== 剧情偏向 ===== */
+.genre-section { margin-bottom: var(--theme-spacing-xs); }
+.genre-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.genre-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--theme-card-border);
+  border-radius: var(--theme-radius-md);
+  cursor: pointer;
+  transition: all var(--theme-transition-fast);
+  user-select: none;
+}
+.genre-chip:hover { border-color: var(--theme-color-primary); }
+.genre-chip.active {
+  border-color: var(--theme-color-primary);
+  background: color-mix(in srgb, var(--theme-color-primary) 12%, var(--theme-card-bg));
+}
+.genre-chip-label { font-weight: 600; font-size: 0.82rem; color: var(--theme-text-primary); }
+.genre-chip.active .genre-chip-label { color: var(--theme-color-primary); }
+.genre-chip-desc { font-size: 0.66rem; color: var(--theme-text-muted); line-height: 1.3; }
+
+/* ===== 其他 ===== */
 .field-group textarea,
 .field-group input {
   width: 100%;

@@ -4,6 +4,8 @@
  * v4: 多 Agent 引擎架构 — 新增角色/记忆/剧情/存档/Agent 管线类型
  */
 
+import type { GameTime } from './time-system';
+
 // ========== World Book (Lorebook) Types ==========
 
 export interface LorebookEntry {
@@ -232,8 +234,8 @@ export interface PlotSettings {
   main?: {
     durationYears: number;                          // 主线持续年份
     allowNonWorldbookNpc: boolean;                  // 是否引入世界书外 NPC
-    difficultyTier: number;                         // 事件难度层级 (1-7, 对应生命层级)
-    genrePreference: Array<'combat' | 'mystery' | 'social' | 'romance'>;
+    difficultyTier?: number;                        // 事件难度层级 (1-7, 对应生命层级; 不填=自适应)
+    genrePreference: Array<'combat' | 'mystery' | 'social' | 'romance' | 'exploration' | 'politics' | 'survival' | 'tragedy'>;
     customPreference: string;                       // 自定义偏好输入框
   };
   /** 支线专属 */
@@ -485,6 +487,10 @@ export interface EquipmentSlot {
   stats?: Record<string, number>;
   durability?: number;
   maxDurability?: number;
+  /** 🆕 效果词条: 词条名→中文描述 (AI写, 前端展示) */
+  effects?: Record<string, string>;
+  /** 🆕 脚本注册表: 脚本名→可执行代码 (AI写, 引擎执行) */
+  scripts?: Record<string, string>;
 }
 
 /** 技能 */
@@ -496,8 +502,11 @@ export interface Skill {
   cost?: { type: 'HP' | 'MP' | 'SP'; amount: number };
   cooldown?: number;             // 剩余冷却时间
   maxCooldown?: number;
-  effects?: string[];
   level?: number;
+  /** 🆕 效果词条: 词条名→中文描述 (AI写, 前端展示) */
+  effects?: Record<string, string>;
+  /** 🆕 脚本注册表: 脚本名→可执行代码 (AI写, 引擎执行) */
+  scripts?: Record<string, string>;
 }
 
 /** 背包物品 */
@@ -509,6 +518,10 @@ export interface InventoryItem {
   type?: string;                 // 'weapon' | 'armor' | 'consumable' | 'material' | 'quest'
   rarity?: '普通' | '优良' | '稀有' | '史诗' | '传说' | '神话' | '唯一';
   data?: Record<string, any>;
+  /** 🆕 效果词条: 词条名→中文描述 (AI写, 前端展示) */
+  effects?: Record<string, string>;
+  /** 🆕 脚本注册表: 脚本名→可执行代码 (AI写, 引擎执行) */
+  scripts?: Record<string, string>;
 }
 
 /** 状态效果 */
@@ -518,10 +531,26 @@ export interface StatusEffect {
   description: string;
   category: '增益' | '减益' | '特殊';   // 世界书三分类
   stacks: number;                // 层数
-  remainingTime: number;         // 剩余时间
+  /** 🆕 最大层数, undefined=无上限, 1 且 stackable=false=不可叠 */
+  maxStacks?: number;
+  /** 🆕 是否可叠加层数, 默认 true. false=永远1层 */
+  stackable?: boolean;
+  remainingTime: number | null;  // 剩余时间, null=永久
   timeUnit: '回合' | '分钟' | '小时';  // 时间单位（战斗中=回合，脱战=分钟/小时）
   source: string;                // 来源 [分类]-[施加者]; [解除方式]
-  effects: Record<string, number>; // 效果数值化
+  effects: Record<string, number>; // 效果数值化 (保留, 简单数值效果)
+  /** 🆕 效果词条: 词条名→中文描述 (AI写, 前端展示) */
+  effectDescriptions?: Record<string, string>;
+  /** 🆕 脚本注册表: 脚本名→可执行代码 (AI写, 引擎执行) */
+  scripts?: Record<string, string>;
+  /** 🆕 施加时执行的脚本引用 */
+  onApply?: string;
+  /** 🆕 每回合/时间单位执行的脚本引用 */
+  onTick?: string;
+  /** 🆕 移除时执行的脚本引用 */
+  onRemove?: string;
+  /** 🆕 条件触发时执行的脚本引用 */
+  onTrigger?: string;
 }
 
 // ===== 登神长阶 (Ascension) 子类型 =====
@@ -1810,6 +1839,13 @@ export interface SaveProfile {
   contracts: FateContract[];
   achievements: Achievement[];
   news: NewsItem[];
+  quests: Record<string, Quest>;
+  /** 焦点任务名 (key into quests) */
+  focusQuest: string;
+  /** 好感度映射: characterId → [-100, +100] */
+  affections: Record<string, number>;
+  /** 🆕 存档级全局游戏时间 */
+  gameTime: GameTime;
   worldFlags: Record<string, any>;
   updatedAt: number;
 }
@@ -1848,6 +1884,36 @@ export interface NewsItem {
   category: string;
   publishedAt: number;
   read: boolean;
+}
+
+// ========== Quest System (Phase 7e) ==========
+
+/** 任务 — 对齐原版 data_schema/utils.ts TaskSchema */
+export interface Quest {
+  /** 任务状态: 进行中 / 已完成 / 失败 / 搁置 等 */
+  status: string;
+  /** 关注度: 高 / 中 / 低 */
+  priority: '低' | '中' | '高';
+  /** 当前进展描述 */
+  progress: string;
+  /** 任务详情 */
+  detail: string;
+  /** 任务目标 */
+  objective: string;
+  /** 奖励描述 */
+  reward: string;
+}
+
+/** 默认任务值 */
+export function createDefaultQuest(): Quest {
+  return {
+    status: '',
+    priority: '中',
+    progress: '',
+    detail: '',
+    objective: '',
+    reward: '',
+  };
 }
 
 // ========== Effect Parser (Phase 4.6) ==========
@@ -2242,4 +2308,34 @@ export interface TravelResult {
   totalDistanceKm: number;
   travelTime: { walk: number; ride: number; carriage: number; teleport: number };
   dangerLevel: number;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Phase 7e — Map System Types
+// ═══════════════════════════════════════════════════════════
+
+/** 地图标记图标 — Font Awesome class names */
+export type MapMarkerIcon =
+  | 'fa-solid fa-location-dot'
+  | 'fa-solid fa-star'
+  | 'fa-solid fa-flag'
+  | 'fa-solid fa-landmark'
+  | 'fa-solid fa-skull-crossbones'
+  | 'fa-solid fa-city'
+  | 'fa-solid fa-mountain'
+  | 'fa-solid fa-tree'
+  | 'fa-solid fa-water'
+  | 'fa-solid fa-campground';
+
+/** 地图标记 — 对齐原版 map-markers.d.ts */
+export interface MapMarker {
+  id: string;
+  name: string;
+  group?: string;
+  description?: string;
+  imageUrls?: string[];
+  icon?: MapMarkerIcon;
+  color?: string;
+  /** OSD 归一化坐标 (0-1)，原点左上角 */
+  position: { nx: number; ny: number };
 }

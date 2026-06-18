@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useThemeStore } from '../../stores/theme-store'
 import { useUIStore } from '../../stores/ui-store'
+import { useSettingsStore, type ApiEntry, type PresetItem } from '../../stores/settings-store'
 import AppButton from '../shared/AppButton.vue'
 import AppCard from '../shared/AppCard.vue'
 import AppModal from '../shared/AppModal.vue'
 import { VERSION } from '@engine/index'
 
-const router = useRouter()
 const theme = useThemeStore()
 const ui = useUIStore()
+const cfg = useSettingsStore()
+const s = cfg.settings  // 短别名，模板里用 s.xxx
 
 // ============================================================
 // 主导航
@@ -30,13 +31,9 @@ const navItems: { key: Section; label: string }[] = [
 ]
 
 // ============================================================
-// API 池
+// API 池（存于 settings-store，自动持久化）
 // ============================================================
-interface ApiEntry {
-  id: string; name: string; baseUrl: string; apiKey: string; maskedKey: string; model: string; models: string[]
-}
-const apiPool = ref<ApiEntry[]>([])
-const hasApi = computed(() => apiPool.value.length > 0)
+const hasApi = computed(() => s.apiPool.length > 0)
 const showAddApi = ref(false)
 const apiForm = reactive({ name: '', baseUrl: '', apiKey: '', model: '' })
 const apiModels = ref<string[]>([])
@@ -48,9 +45,9 @@ function maskKey(key: string): string { if (!key || key.length < 8) return key ?
 async function testApiAndFetch() { if(!apiForm.baseUrl||!apiForm.apiKey)return; apiFormTesting.value=true; try{const r=await fetch(apiForm.baseUrl+'/chat/completions',{method:'POST',headers:{'Authorization':`Bearer ${apiForm.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({model:apiForm.model||'default',messages:[{role:'user',content:'hi'}],max_tokens:1})});if(!r.ok)throw Error('');apiForm.apiKey=maskKey(apiForm.apiKey);ui.toast('连接成功','success');await fetchModelList()}catch{ui.toast('连接失败','error')} apiFormTesting.value=false }
 async function fetchModelList() { apiFormFetchingModels.value=true; try{const r=await fetch(apiForm.baseUrl+'/models',{headers:{'Authorization':`Bearer ${apiForm.apiKey}`,'Content-Type':'application/json'}});if(r.ok){const d=await r.json();apiModels.value=(d.data||[]).map((m:any)=>m.id).filter(Boolean);if(apiModels.value.length>0)apiForm.model=apiModels.value[0];ui.toast(`获取到 ${apiModels.value.length} 个模型`,'success')}}catch{} apiFormFetchingModels.value=false }
 function openAddApi() { editingApiId.value=null; apiForm.name='';apiForm.baseUrl='';apiForm.apiKey='';apiForm.model='';apiModels.value=[];showAddApi.value=true }
-function openEditApi(ep:ApiEntry) { editingApiId.value=ep.id;apiForm.name=ep.name;apiForm.baseUrl=ep.baseUrl;apiForm.apiKey=ep.apiKey||'';apiForm.model=ep.model;apiModels.value=ep.models?.length?ep.models:[ep.model].filter(Boolean);showAddApi.value=true }
-function saveApi() { const e:ApiEntry={id:editingApiId.value||crypto.randomUUID(),name:apiForm.name,baseUrl:apiForm.baseUrl,apiKey:apiForm.apiKey,maskedKey:maskKey(apiForm.apiKey),model:apiForm.model,models:apiModels.value.length>0?apiModels.value:[apiForm.model].filter(Boolean)};if(editingApiId.value){const i=apiPool.value.findIndex(x=>x.id===editingApiId.value);if(i>=0)apiPool.value[i]=e}else apiPool.value.push(e);showAddApi.value=false;editingApiId.value=null;ui.toast(editingApiId.value?'API 已更新':'API 已添加','success') }
-function deleteApi(id:string) { apiPool.value=apiPool.value.filter(e=>e.id!==id);ui.toast('API 已删除','info') }
+function openEditApi(ep: ApiEntry) { editingApiId.value=ep.id;apiForm.name=ep.name;apiForm.baseUrl=ep.baseUrl;apiForm.apiKey=ep.apiKey||'';apiForm.model=ep.model;apiModels.value=ep.models?.length?ep.models:[ep.model].filter(Boolean);showAddApi.value=true }
+function saveApi() { const e: ApiEntry = {id:editingApiId.value||crypto.randomUUID(),name:apiForm.name,baseUrl:apiForm.baseUrl,apiKey:apiForm.apiKey,maskedKey:maskKey(apiForm.apiKey),model:apiForm.model,models:apiModels.value.length>0?apiModels.value:[apiForm.model].filter(Boolean)};if(editingApiId.value){const i=s.apiPool.findIndex(x=>x.id===editingApiId.value);if(i>=0)s.apiPool[i]=e}else s.apiPool.push(e);showAddApi.value=false;editingApiId.value=null;ui.toast(editingApiId.value?'API 已更新':'API 已添加','success') }
+function deleteApi(id:string) { s.apiPool = s.apiPool.filter(e=>e.id!==id);ui.toast('API 已删除','info') }
 
 // ============================================================
 // Agent 配置
@@ -68,28 +65,19 @@ const agentList = [
   { id:'plot_post_check', name:'剧情修正', desc:'正文后检查世界线变动，修正剧情大纲', stage:5 },
   { id:'plot_outline', name:'大纲生成', desc:'主线/支线模式下生成剧情大纲和事件树', stage:5 },
 ]
-const activeAgent = ref<string | null>(null)
+const activeAgent = ref<string | null>(s.activeAgent)
 
-// Agent 模型选择 — 默认为空
-const agentModels = ref<Record<string, string>>({})
-// Agent 世界书启用
-const agentWorldbookEnabled = ref<Record<string, boolean>>({})
-// Agent 世界书多选列表（暂空）
-const agentWorldbookIds = ref<Record<string, string[]>>({})
-// Agent 提示词
-const agentPrompts = ref<Record<string, string>>({})
+// Agent 配置全部从 settings-store 读写，自动持久化
 const agentPromptDraft = ref('')
-const agentPromptEdited = ref(false)
-// Agent 编辑模式（用于恢复默认）
-const agentDirty = ref<Record<string, boolean>>({})
+// 初始化时从 store 恢复 agent 提示词
+if (activeAgent.value && s.agentPrompts[activeAgent.value]) {
+  agentPromptDraft.value = s.agentPrompts[activeAgent.value]
+}
 
 // ============================================================
 // 预设系统（正文 Agent 专用）
 // ============================================================
-interface PresetItem { id: string; name: string; description?: string; settings: Record<string, any>; createdAt: number; updatedAt: number }
-const presets = ref<PresetItem[]>([])
-const activePresetId = ref<string>('')
-const activePreset = computed(() => presets.value.find(p => p.id === activePresetId.value) || null)
+const activePreset = computed(() => s.presets.find((p: PresetItem) => p.id === s.activePresetId) || null)
 
 // 条目展开/折叠
 const expandedEntries = ref(new Set<string>())
@@ -106,7 +94,7 @@ const editingEntryPresetId = ref('')
 const entryEditForm = reactive({ name: '', content: '', enabled: true, role: 'system' })
 
 function openEntryEditor(presetId: string, idx: number) {
-  const p = presets.value.find(x => x.id === presetId)
+  const p = s.presets.find((x: PresetItem) => x.id === presetId)
   if (!p?.settings?.prompts?.[idx]) return
   const sp = p.settings.prompts[idx]
   editingEntryPresetId.value = presetId
@@ -119,23 +107,17 @@ function openEntryEditor(presetId: string, idx: number) {
 }
 
 async function saveEntry() {
-  const p = presets.value.find(x => x.id === editingEntryPresetId.value)
+  const p = s.presets.find((x: PresetItem) => x.id === editingEntryPresetId.value)
   if (!p) return
   const idx = editingEntryIdx.value
   const prompts = [...(p.settings.prompts || [])]
   if (prompts[idx]) {
-    prompts[idx] = {
-      ...prompts[idx],
-      name: entryEditForm.name,
-      content: entryEditForm.content,
-      enabled: entryEditForm.enabled,
-      role: entryEditForm.role,
-    }
+    prompts[idx] = { ...prompts[idx], name: entryEditForm.name, content: entryEditForm.content, enabled: entryEditForm.enabled, role: entryEditForm.role }
     const updated = { ...p, settings: { ...p.settings, prompts }, updatedAt: Date.now() }
     const { savePreset } = await import('@engine/database')
     await savePreset(updated as any)
     await loadPresets()
-    activePresetId.value = updated.id  // re-trigger computed
+    s.activePresetId = updated.id
     showEntryEditor.value = false
     ui.toast('条目已保存', 'success')
   }
@@ -145,15 +127,15 @@ const presetForm = reactive({ name: '', description: '', mainPrompt: '', tempera
 const editingPresetId = ref<string | null>(null)
 
 async function loadPresets() {
-  try { const { getPresets } = await import('@engine/database'); const p = await getPresets(); if (p) presets.value = p as PresetItem[] } catch {}
+  try { const { getPresets } = await import('@engine/database'); const p = await getPresets(); if (p) s.presets = p as PresetItem[] } catch {}
 }
 function selectPreset(id: string) {
-  activePresetId.value = id
-  const p = presets.value.find(x => x.id === id)
+  s.activePresetId = id
+  const p = s.presets.find((x: PresetItem) => x.id === id)
   if (p) {
-    const s = p.settings
-    agentPromptDraft.value = s.prompts?.[0]?.content || s.mainPrompt || s.system_prompt || ''
-    agentPromptEdited.value = true
+    const ps = p.settings
+    agentPromptDraft.value = ps.prompts?.[0]?.content || ps.mainPrompt || ps.system_prompt || ''
+    s.s.agentPromptEdited = true
   }
 }
 function openNewPreset() {
@@ -168,7 +150,7 @@ function openEditPreset(p: PresetItem) {
   showPresetEditor.value = true
 }
 async function savePreset() {
-  const { savePreset } = await import('@engine/database')
+  const { savePreset: sp } = await import('@engine/database')
   const now = Date.now()
   const settings: Record<string, any> = {
     temp_openai: presetForm.temperature,
@@ -181,16 +163,16 @@ async function savePreset() {
   const item: PresetItem = {
     id: editingPresetId.value || crypto.randomUUID(),
     name: presetForm.name, description: presetForm.description,
-    settings, createdAt: editingPresetId.value ? (presets.value.find(p=>p.id===editingPresetId.value)?.createdAt||now) : now, updatedAt: now,
+    settings, createdAt: editingPresetId.value ? (s.presets.find((p:PresetItem)=>p.id===editingPresetId.value)?.createdAt||now) : now, updatedAt: now,
   }
-  await savePreset(item as any)
+  await sp(item as any)
   await loadPresets()
   showPresetEditor.value = false
   ui.toast(editingPresetId.value ? '预设已更新' : '预设已创建', 'success')
 }
 async function deletePreset(id: string) {
-  const { deletePreset } = await import('@engine/database')
-  try { await deletePreset(id); await loadPresets(); if (activePresetId.value === id) activePresetId.value = ''; ui.toast('预设已删除', 'info') } catch {}
+  const { deletePreset: dp } = await import('@engine/database')
+  try { await dp(id); await loadPresets(); if (s.activePresetId === id) s.activePresetId = ''; ui.toast('预设已删除', 'info') } catch {}
 }
 async function importStPreset() {
   const { savePreset: sp } = await import('@engine/database')
@@ -228,33 +210,33 @@ watch(activeSection, (s) => { if (s === 'agent') loadPresets() })
 
 const availableApiModels = computed(() => {
   const m: { id: string; label: string }[] = []
-  for (const api of apiPool.value) for (const mdl of api.models) m.push({ id: `${api.id}:${mdl}`, label: `${api.name} — ${mdl}` })
+  for (const api of s.apiPool) for (const mdl of api.models) m.push({ id: `${api.id}:${mdl}`, label: `${api.name} — ${mdl}` })
   return m
 })
 
 function selectAgent(agentId: string) {
   activeAgent.value = agentId
-  agentPromptDraft.value = agentPrompts.value[agentId] || ''
-  agentPromptEdited.value = false
+  s.activeAgent = agentId
+  agentPromptDraft.value = s.agentPrompts[agentId] || ''
+  s.s.agentPromptEdited = false
 }
 
-function confirmPrompt() { if(!activeAgent.value)return; agentPrompts.value[activeAgent.value]=agentPromptDraft.value; agentPromptEdited.value=false; agentDirty.value[activeAgent.value]=true; ui.toast('提示词已保存','success') }
-function resetPrompt() { if(!activeAgent.value)return; agentPromptDraft.value=''; agentPrompts.value[activeAgent.value]=''; agentPromptEdited.value=false; agentDirty.value[activeAgent.value]=false; ui.toast('已恢复默认提示词','info') }
-function saveAgentSettings() { if(!activeAgent.value)return; agentDirty.value[activeAgent.value]=true; ui.toast('Agent 设置已保存','success') }
-function restoreAgentDefaults() { if(!activeAgent.value)return; agentModels.value[activeAgent.value]=''; agentWorldbookEnabled.value[activeAgent.value]=false; agentWorldbookIds.value[activeAgent.value]=[]; agentPrompts.value[activeAgent.value]=''; agentDirty.value[activeAgent.value]=false; ui.toast('已恢复默认设置','info') }
+function confirmPrompt() { if(!activeAgent.value)return; s.agentPrompts[activeAgent.value]=agentPromptDraft.value; s.s.agentPromptEdited=false; s.agentDirty[activeAgent.value]=true; ui.toast('提示词已保存','success') }
+function resetPrompt() { if(!activeAgent.value)return; agentPromptDraft.value=''; s.agentPrompts[activeAgent.value]=''; s.s.agentPromptEdited=false; s.agentDirty[activeAgent.value]=false; ui.toast('已恢复默认提示词','info') }
+function saveAgentSettings() { if(!activeAgent.value)return; s.agentDirty[activeAgent.value]=true; ui.toast('Agent 设置已保存','success') }
+function restoreAgentDefaults() { if(!activeAgent.value)return; s.agentModels[activeAgent.value]=''; s.agentWorldbookEnabled[activeAgent.value]=false; s.agentWorldbookIds[activeAgent.value]=[]; s.agentPrompts[activeAgent.value]=''; s.agentDirty[activeAgent.value]=false; ui.toast('已恢复默认设置','info') }
 
 // ============================================================
-// 剧情系统
+// 剧情系统（存于 settings-store，自动持久化）
 // ============================================================
-const plotMode = ref('off'); const plotDuration = ref(5); const plotDifficulty = ref('dynamic'); const plotAllowExternalNPC = ref(true)
-const plotGenres = ref(['combat','social']); const plotCustomPref = ref(''); const showPlotPreview = ref(false)
+const showPlotPreview = ref(false)
 const genreOptions = [
   { value:'combat', label:'战斗', desc:'侧重战斗冲突与力量成长' }, { value:'mystery', label:'解谜', desc:'侧重悬疑推理与真相揭露' },
   { value:'social', label:'社交', desc:'侧重势力博弈与人际关系' }, { value:'romance', label:'恋爱', desc:'侧重情感发展与羁绊建立' },
   { value:'exploration', label:'探索', desc:'侧重地图探索与未知发现' }, { value:'politics', label:'权谋', desc:'侧重政治斗争与权力更迭' },
   { value:'survival', label:'生存', desc:'侧重资源管理与逆境求生' }, { value:'tragedy', label:'悲剧', desc:'侧重命运无常与英雄陨落' },
 ]
-function toggleGenre(g:string){const i=plotGenres.value.indexOf(g);if(i>=0)plotGenres.value.splice(i,1);else plotGenres.value.push(g)}
+function toggleGenre(g:string){const i=s.plotGenres.indexOf(g);if(i>=0)s.plotGenres.splice(i,1);else s.plotGenres.push(g)}
 const plotDifficultyOptions = [
   { value:'dynamic', label:'动态（根据玩家层级）' }, { value:'1', label:'T1 普通' }, { value:'2', label:'T2 中坚' },
   { value:'3', label:'T3 精英' }, { value:'4', label:'T4 史诗' }, { value:'5', label:'T5 传说' }, { value:'6', label:'T6 神话' }, { value:'7', label:'T7 神祇' },
@@ -265,16 +247,22 @@ const plotDifficultyOptions = [
 // ============================================================
 function selectTheme(id:string){theme.apply(id);ui.toast(`主题：${theme.currentTheme?.nameZh}`,'success')}
 const showClearConfirm = ref(false)
+const storageInfo = ref<{ used: number; quota: number; pct: number } | null>(null)
+async function loadStorageUsage() {
+  storageInfo.value = await cfg.getStorageUsage()
+}
+onMounted(loadStorageUsage)
+function fmtBytes(b: number) { if (b < 1024) return `${b} B`; if (b < 1048576) return `${(b/1024).toFixed(1)} KB`; return `${(b/1048576).toFixed(1)} MB` }
 async function exportAll(){const{exportAllData}=await import('@engine/database');const d=await exportAllData();const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`fated-poem-${Date.now()}.json`;a.click();URL.revokeObjectURL(u);ui.toast('导出成功','success')}
-async function importAll(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=async(e)=>{const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;try{const{importAllData}=await import('@engine/database');await importAllData(JSON.parse(await f.text()));ui.toast('导入成功','success')}catch{ui.toast('导入失败','error')}};i.click()}
-async function clearAll(){const{deleteDatabase}=await import('@engine/database');await deleteDatabase();showClearConfirm.value=false;ui.toast('数据已清除，页面即将刷新','warning');setTimeout(()=>location.reload(),1500)}
+async function importAll(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=async(e)=>{const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;try{const{importAllData}=await import('@engine/database');await importAllData(JSON.parse(await f.text()));ui.toast('导入成功','success');await loadStorageUsage()}catch{ui.toast('导入失败','error')}};i.click()}
+async function clearAll(){const{deleteDatabase}=await import('@engine/database');await deleteDatabase();cfg.resetAll();showClearConfirm.value=false;ui.toast('数据已清除，页面即将刷新','warning');setTimeout(()=>location.reload(),1500)}
 </script>
 
 <template>
   <div class="settings-page">
     <!-- 顶部栏 -->
     <div class="settings-header">
-      <AppButton variant="ghost" size="sm" @click="router.push('/')">← 返回</AppButton>
+      <AppButton variant="ghost" size="sm" @click="ui.navigate(ui.activeSaveId ? 'game' : 'home')">← 返回</AppButton>
       <h2 class="settings-title">系统设置</h2>
       <div class="header-spacer" />
     </div>
@@ -309,8 +297,8 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
             <AppButton variant="primary" size="sm" @click="openAddApi">+ 添加 API</AppButton>
           </div>
           <div class="api-pool">
-            <AppCard v-for="ep in apiPool" :key="ep.id" padding="md"><div class="api-card-body"><div class="api-card-info"><span class="api-card-name">{{ ep.name }}</span><span class="api-card-model text-secondary text-sm">{{ ep.model||'未选择模型' }}</span><span class="api-card-url text-muted text-xs">{{ ep.baseUrl }}</span></div><div class="api-card-actions"><AppButton variant="ghost" size="sm" @click="openEditApi(ep)">编辑</AppButton><AppButton variant="ghost" size="sm" @click="deleteApi(ep.id)">删除</AppButton></div></div></AppCard>
-            <p v-if="apiPool.length===0" class="text-muted text-sm" style="text-align:center;padding:24px">还没有配置 API，点击右上角"添加 API"开始</p>
+            <AppCard v-for="ep in s.apiPool" :key="ep.id" padding="md"><div class="api-card-body"><div class="api-card-info"><span class="api-card-name">{{ ep.name }}</span><span class="api-card-model text-secondary text-sm">{{ ep.model||'未选择模型' }}</span><span class="api-card-url text-muted text-xs">{{ ep.baseUrl }}</span></div><div class="api-card-actions"><AppButton variant="ghost" size="sm" @click="openEditApi(ep)">编辑</AppButton><AppButton variant="ghost" size="sm" @click="deleteApi(ep.id)">删除</AppButton></div></div></AppCard>
+            <p v-if="s.apiPool.length===0" class="text-muted text-sm" style="text-align:center;padding:24px">还没有配置 API，点击右上角"添加 API"开始</p>
           </div>
           <!-- 模型推荐 -->
           <AppCard padding="md" class="embedding-hint" style="margin-top:16px">
@@ -332,13 +320,13 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
             <h4>模型选择</h4>
             <p class="form-hint">从 API 池中为此 Agent 选择模型。必须选择，留空则此 Agent 无法运行。</p>
             <div class="key-row">
-              <select class="form-input" :value="agentModels[activeAgent] || ''"
-                @change="agentModels[activeAgent] = ($event.target as HTMLSelectElement).value; agentDirty[activeAgent] = true">
+              <select class="form-input" :value="s.agentModels[activeAgent] || ''"
+                @change="s.agentModels[activeAgent] = ($event.target as HTMLSelectElement).value; s.agentDirty[activeAgent] = true">
                 <option value="">— 请选择模型 —</option>
                 <option v-for="m in availableApiModels" :key="m.id" :value="m.id">{{ m.label }}</option>
               </select>
-              <span v-if="!agentModels[activeAgent] && !hasApi" class="api-warn">⚠ 请先配置 API</span>
-              <span v-else-if="!agentModels[activeAgent]" class="api-warn">⚠ 未选择</span>
+              <span v-if="!s.agentModels[activeAgent] && !hasApi" class="api-warn">⚠ 请先配置 API</span>
+              <span v-else-if="!s.agentModels[activeAgent]" class="api-warn">⚠ 未选择</span>
               <span v-else class="api-ok">✓</span>
             </div>
           </AppCard>
@@ -351,8 +339,8 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
               <label class="toggle-label">
                 <span class="text-sm text-secondary">启用世界书</span>
                 <input type="checkbox" class="toggle-input"
-                  :checked="agentWorldbookEnabled[activeAgent] || false"
-                  @change="agentWorldbookEnabled[activeAgent] = ($event.target as HTMLInputElement).checked; agentDirty[activeAgent] = true" />
+                  :checked="s.agentWorldbookEnabled[activeAgent] || false"
+                  @change="s.agentWorldbookEnabled[activeAgent] = ($event.target as HTMLInputElement).checked; s.agentDirty[activeAgent] = true" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -370,7 +358,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
             <div class="preset-selector-bar">
               <select class="form-input preset-select" :value="activePresetId" @change="selectPreset(($event.target as HTMLSelectElement).value)">
                 <option value="">— 选择预设 —</option>
-                <option v-for="p in presets" :key="p.id" :value="p.id">{{ p.name }}</option>
+                <option v-for="p in s.presets" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
               <AppButton variant="ghost" size="sm" @click="importStPreset">📥 导入</AppButton>
               <AppButton variant="primary" size="sm" @click="openNewPreset">+ 新建</AppButton>
@@ -457,7 +445,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
           <AppCard v-else padding="md" class="detail-card">
             <h4>System Prompt</h4>
             <p class="form-hint">编辑此 Agent 的固定系统提示词。留空则使用引擎默认模板。</p>
-            <textarea v-model="agentPromptDraft" class="form-textarea prompt-editor" rows="10" placeholder="留空使用引擎默认模板..." @input="agentPromptEdited=true" />
+            <textarea v-model="agentPromptDraft" class="form-textarea prompt-editor" rows="10" placeholder="留空使用引擎默认模板..." @input="s.agentPromptEdited=true" />
           </AppCard>
 
           <!-- 操作按钮 -->
@@ -497,15 +485,15 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
           <h3>剧情系统</h3>
           <p class="section-desc">控制剧情生成模式、大纲和事件参数。对应 Agent：剧情预检 / 剧情修正 / 大纲生成</p>
           <!-- 剧情偏向 — 最上面 -->
-          <AppCard padding="md" class="detail-card"><h4>剧情偏向</h4><p class="form-hint">选择一个或多个你喜欢的剧情方向，AI 会优先往这些方向发展。</p><div class="genre-grid"><label v-for="g in genreOptions" :key="g.value" class="genre-chip" :class="{'genre-active':plotGenres.includes(g.value)}" @click="toggleGenre(g.value)"><span class="genre-chip-label">{{ g.label }}</span><span class="genre-chip-desc">{{ g.desc }}</span></label></div></AppCard>
+          <AppCard padding="md" class="detail-card"><h4>剧情偏向</h4><p class="form-hint">选择一个或多个你喜欢的剧情方向，AI 会优先往这些方向发展。</p><div class="genre-grid"><label v-for="g in genreOptions" :key="g.value" class="genre-chip" :class="{'genre-active':s.plotGenres.includes(g.value)}" @click="toggleGenre(g.value)"><span class="genre-chip-label">{{ g.label }}</span><span class="genre-chip-desc">{{ g.desc }}</span></label></div></AppCard>
           <!-- 模式 & 参数 -->
           <AppCard padding="md" class="detail-card" style="margin-top:16px"><h4>剧情模式 & 参数</h4>
             <div class="form-grid">
-              <label class="form-label">剧情模式<p class="form-hint">选择剧情系统的运行模式</p><select v-model="plotMode" class="form-input"><option value="off">完全关闭 — 不生成任何剧情事件</option><option value="side">仅支线 — 每年自动生成地区冲突事件</option><option value="main">主线模式 — 按大纲推进完整主线剧情</option></select></label>
-              <label class="form-label">主线持续年份<p class="form-hint">主线剧情覆盖的游戏年份数</p><input v-model.number="plotDuration" type="number" min="1" max="50" class="form-input" /></label>
-              <label class="form-label">事件难度层级<p class="form-hint">动态 = 根据玩家当前层级自动调整</p><select v-model="plotDifficulty" class="form-input"><option v-for="o in plotDifficultyOptions" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>
-              <label class="form-label">引入外部 NPC<p class="form-hint">允许 AI 在世界书之外创造新角色</p><select v-model="plotAllowExternalNPC" class="form-input"><option :value="true">允许 — 剧情更丰富但可能偏离设定</option><option :value="false">禁止 — 仅使用世界书内角色</option></select></label>
-              <label class="form-label" style="grid-column:1/-1">自定义偏好<p class="form-hint">用自然语言描述你想要的剧情风格</p><textarea v-model="plotCustomPref" class="form-input form-textarea" rows="2" placeholder="例如：希望主角经历一场背叛后重新振作..." /></label>
+              <label class="form-label">剧情模式<p class="form-hint">选择剧情系统的运行模式</p><select v-model="s.plotMode" class="form-input"><option value="off">完全关闭 — 不生成任何剧情事件</option><option value="side">仅支线 — 每年自动生成地区冲突事件</option><option value="main">主线模式 — 按大纲推进完整主线剧情</option></select></label>
+              <label class="form-label">主线持续年份<p class="form-hint">主线剧情覆盖的游戏年份数</p><input v-model.number="s.plotDuration" type="number" min="1" max="50" class="form-input" /></label>
+              <label class="form-label">事件难度层级<p class="form-hint">动态 = 根据玩家当前层级自动调整</p><select v-model="s.plotDifficulty" class="form-input"><option v-for="o in plotDifficultyOptions" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>
+              <label class="form-label">引入外部 NPC<p class="form-hint">允许 AI 在世界书之外创造新角色</p><select v-model="s.plotAllowExternalNPC" class="form-input"><option :value="true">允许 — 剧情更丰富但可能偏离设定</option><option :value="false">禁止 — 仅使用世界书内角色</option></select></label>
+              <label class="form-label" style="grid-column:1/-1">自定义偏好<p class="form-hint">用自然语言描述你想要的剧情风格</p><textarea v-model="s.plotCustomPref" class="form-input form-textarea" rows="2" placeholder="例如：希望主角经历一场背叛后重新振作..." /></label>
             </div>
           </AppCard>
           <!-- 大纲预览 -->
@@ -521,10 +509,10 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
           <h3>记忆 & 缓存设置</h3>
           <p class="section-desc">控制 Embedding 召回、记忆压缩和缓存策略。Embedding 端点请在「API 配置」中添加（推荐硅基流动）。</p>
           <AppCard padding="md"><div class="form-grid">
-            <label class="form-label">每轮最大召回记忆数<p class="form-hint">每次对话时从记忆库中召回的最多条目数</p><input type="number" value="20" min="5" max="50" class="form-input" /></label>
-            <label class="form-label">压缩阈值（轮）<p class="form-hint">超过此轮数后，早期记忆会被压缩为摘要</p><input type="number" value="100" min="50" max="500" class="form-input" /></label>
-            <label class="form-label">每存档最大快照数<p class="form-hint">超过上限后最旧的快照会被自动删除</p><input type="number" value="30" min="10" max="50" class="form-input" /></label>
-            <label class="form-label">缓存策略<p class="form-hint">影响 API 调用的 Prompt 缓存利用率</p><select class="form-input"><option value="aggressive">激进 — 尽可能缓存，高命中率</option><option value="balanced" selected>平衡 — 兼顾缓存命中与资源消耗</option><option value="conservative">保守 — 最小缓存，适合低内存设备</option></select></label>
+            <label class="form-label">每轮最大召回记忆数<p class="form-hint">每次对话时从记忆库中召回的最多条目数</p><input type="number" v-model.number="s.memoryRecallCount" min="5" max="50" class="form-input" /></label>
+            <label class="form-label">压缩阈值（轮）<p class="form-hint">超过此轮数后，早期记忆会被压缩为摘要</p><input type="number" v-model.number="s.memoryCompressionThreshold" min="50" max="500" class="form-input" /></label>
+            <label class="form-label">每存档最大快照数<p class="form-hint">超过上限后最旧的快照会被自动删除</p><input type="number" v-model.number="s.memorySnapshotLimit" min="10" max="50" class="form-input" /></label>
+            <label class="form-label">缓存策略<p class="form-hint">影响 API 调用的 Prompt 缓存利用率</p><select v-model="s.memoryCacheStrategy" class="form-input"><option value="aggressive">激进 — 尽可能缓存，高命中率</option><option value="balanced">平衡 — 兼顾缓存命中与资源消耗</option><option value="conservative">保守 — 最小缓存，适合低内存设备</option></select></label>
           </div></AppCard>
         </section>
 
@@ -543,7 +531,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
         <!-- ========== 存档数据 ========== -->
         <section v-if="activeSection === 'data'" class="section centered">
           <h3>存档数据管理</h3><p class="section-desc">导出、导入或清除所有数据。建议定期导出备份。</p>
-          <div class="data-actions"><AppCard padding="md"><h4>导出数据</h4><p class="text-muted text-sm">将所有存档、角色、记忆、剧情导出为 JSON 文件</p><AppButton variant="secondary" size="sm" @click="exportAll" style="margin-top:8px">导出全部数据</AppButton></AppCard><AppCard padding="md"><h4>导入数据</h4><p class="text-muted text-sm">从 JSON 文件恢复数据，将合并到现有数据库</p><AppButton variant="secondary" size="sm" @click="importAll" style="margin-top:8px">导入数据</AppButton></AppCard><AppCard padding="md" class="data-danger"><h4>清除所有数据</h4><p class="text-muted text-sm">永久删除所有存档、角色、记忆和设置。不可撤销。</p><AppButton variant="danger" size="sm" @click="showClearConfirm=true" style="margin-top:8px">清除所有数据</AppButton></AppCard></div>
+          <div class="data-actions"><AppCard padding="md"><h4>导出数据</h4><p class="text-muted text-sm">将所有存档、角色、记忆、剧情导出为 JSON 文件</p><AppButton variant="secondary" size="sm" @click="exportAll" style="margin-top:8px">导出全部数据</AppButton></AppCard><AppCard padding="md"><h4>导入数据</h4><p class="text-muted text-sm">从 JSON 文件恢复数据，将合并到现有数据库</p><AppButton variant="secondary" size="sm" @click="importAll" style="margin-top:8px">导入数据</AppButton></AppCard><AppCard padding="md"><h4>📊 浏览器存储用量</h4><div v-if="storageInfo"><div class="storage-bar-track"><div class="storage-bar-fill" :style="{width:storageInfo.pct+'%'}"></div></div><p class="text-sm" style="margin:6px 0 0">{{ fmtBytes(storageInfo.used) }} / {{ fmtBytes(storageInfo.quota) }}（{{ storageInfo.pct.toFixed(1) }}%）</p><p class="text-xs text-muted">IndexedDB + localStorage</p></div><p v-else class="text-muted text-sm">获取中…</p></AppCard><AppCard padding="md" class="data-danger"><h4>清除所有数据</h4><p class="text-muted text-sm">永久删除所有存档、角色、记忆和设置。不可撤销。</p><AppButton variant="danger" size="sm" @click="showClearConfirm=true" style="margin-top:8px">清除所有数据</AppButton></AppCard></div>
           <AppModal :open="showClearConfirm" title="确认清除" size="sm" @update:open="showClearConfirm=$event"><p>确定要删除所有数据吗？此操作<strong style="color:var(--theme-error)">不可撤销</strong>。</p><template #footer><AppButton variant="ghost" size="sm" @click="showClearConfirm=false">取消</AppButton><AppButton variant="danger" size="sm" @click="clearAll">确认清除</AppButton></template></AppModal>
         </section>
 
@@ -755,6 +743,8 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
 .data-actions{display:flex;flex-direction:column;gap:12px}
 .data-actions h4{margin:0 0 4px;font-size:0.95rem}
 .data-danger{border-color:color-mix(in srgb,var(--theme-error) 30%,transparent)}
+.storage-bar-track{height:8px;border-radius:4px;background:var(--theme-card-border);overflow:hidden}
+.storage-bar-fill{height:100%;border-radius:4px;background:var(--theme-quality-优良);transition:width 0.5s ease}
 
 /* About */
 .about-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
