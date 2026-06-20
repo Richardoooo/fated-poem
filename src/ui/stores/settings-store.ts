@@ -39,6 +39,22 @@ export interface PresetItem {
   prompts?: { name: string; content: string; enabled: boolean; role: string }[]
 }
 
+// ===== Phase 8: Agent 项目默认配置 =====
+
+export interface AgentDefaultEntry {
+  worldBookEnabled: boolean
+  worldBookIds: string[]
+  model: string
+  systemPrompt: string
+  presetId: string
+  preset: PresetItem | null
+}
+
+export interface AgentProjectDefaults {
+  version: number
+  agents: Record<string, AgentDefaultEntry>
+}
+
 // ===== 默认值 =====
 
 const STORAGE_KEY = 'fated-poem-settings'
@@ -116,6 +132,8 @@ export const useSettingsStore = defineStore('settings', () => {
     } catch {
       // fetch 不可用时静默跳过
     }
+    // 加载项目默认 Agent 配置
+    await loadAgentProjectDefaults()
   }, 0)
 
   const settings = ref<Record<string, any>>(merged)
@@ -140,6 +158,67 @@ export const useSettingsStore = defineStore('settings', () => {
     saveNow()
   }
 
+  // ===== 项目默认 Agent 配置 =====
+
+  const projectAgentDefaults = ref<AgentProjectDefaults>({ version: 1, agents: {} })
+
+  /** 从 data/defaults/agent-config.json 加载项目默认配置 */
+  async function loadAgentProjectDefaults() {
+    try {
+      const res = await fetch('/data/defaults/agent-config.json')
+      if (res.ok) {
+        projectAgentDefaults.value = await res.json()
+      }
+    } catch {
+      // 文件不存在或 fetch 失败，使用空骨架
+    }
+    // 对未被用户配置过的 agent 补上项目默认值
+    const pd = projectAgentDefaults.value?.agents
+    if (!pd) return
+    for (const [agentId, entry] of Object.entries(pd)) {
+      if (!(agentId in (settings.value.agentModels as Record<string, string>))) {
+        settings.value.agentModels[agentId] = entry.model ?? ''
+      }
+      if (!(agentId in (settings.value.agentWorldbookEnabled as Record<string, boolean>))) {
+        settings.value.agentWorldbookEnabled[agentId] = entry.worldBookEnabled ?? false
+      }
+      if (!(agentId in (settings.value.agentWorldbookIds as Record<string, string[]>))) {
+        settings.value.agentWorldbookIds[agentId] = [...(entry.worldBookIds ?? [])]
+      }
+      if (!(agentId in (settings.value.agentPrompts as Record<string, string>))) {
+        settings.value.agentPrompts[agentId] = entry.systemPrompt ?? ''
+      }
+      // 预设：如果项目默认有预设且用户本地没有，插入 presets 数组
+      if (entry.preset && entry.presetId) {
+        const existingPreset = (settings.value.presets as PresetItem[]).find(p => p.id === entry.presetId)
+        if (!existingPreset && entry.preset) {
+          ;(settings.value.presets as PresetItem[]).push(entry.preset)
+        }
+        if (!settings.value.activePresetId) {
+          settings.value.activePresetId = entry.presetId
+        }
+      }
+    }
+  }
+
+  /** 保存项目默认 Agent 配置到 data/defaults/agent-config.json */
+  async function saveAgentProjectDefaults(data: AgentProjectDefaults): Promise<boolean> {
+    try {
+      const res = await fetch('/api/defaults/agent-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data, null, 2),
+      })
+      if (res.ok) {
+        projectAgentDefaults.value = data
+        return true
+      }
+    } catch {
+      // 网络错误
+    }
+    return false
+  }
+
   /** 获取浏览器存储用量 */
   async function getStorageUsage(): Promise<{ used: number; quota: number; pct: number } | null> {
     try {
@@ -153,5 +232,5 @@ export const useSettingsStore = defineStore('settings', () => {
     return null
   }
 
-  return { settings, saveNow, resetAll, getStorageUsage }
+  return { settings, saveNow, resetAll, getStorageUsage, projectAgentDefaults, loadAgentProjectDefaults, saveAgentProjectDefaults }
 })

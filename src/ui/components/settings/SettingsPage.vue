@@ -228,8 +228,95 @@ function selectAgent(agentId: string) {
 
 function confirmPrompt() { if(!activeAgent.value)return; s.agentPrompts[activeAgent.value]=agentPromptDraft.value; s.s.agentPromptEdited=false; s.agentDirty[activeAgent.value]=true; ui.toast('提示词已保存','success') }
 function resetPrompt() { if(!activeAgent.value)return; agentPromptDraft.value=''; s.agentPrompts[activeAgent.value]=''; s.s.agentPromptEdited=false; s.agentDirty[activeAgent.value]=false; ui.toast('已恢复默认提示词','info') }
-function saveAgentSettings() { if(!activeAgent.value)return; s.agentDirty[activeAgent.value]=true; ui.toast('Agent 设置已保存','success') }
-function restoreAgentDefaults() { if(!activeAgent.value)return; s.agentModels[activeAgent.value]=''; s.agentWorldbookEnabled[activeAgent.value]=false; s.agentWorldbookIds[activeAgent.value]=[]; s.agentPrompts[activeAgent.value]=''; s.agentDirty[activeAgent.value]=false; ui.toast('已恢复默认设置','info') }
+async function saveAsDefault() {
+  if (!activeAgent.value) return
+  const agentId = activeAgent.value
+
+  // 构建当前 Agent 的默认条目
+  const entry = {
+    worldBookEnabled: s.agentWorldbookEnabled[agentId] ?? false,
+    worldBookIds: [...(s.agentWorldbookIds[agentId] || [])],
+    model: s.agentModels[agentId] || '',
+    systemPrompt: '',
+    presetId: '',
+    preset: null as PresetItem | null,
+  }
+
+  if (agentId === 'story') {
+    // Story Agent：嵌入完整预设数据
+    entry.presetId = s.activePresetId || ''
+    if (s.activePresetId && activePreset.value) {
+      entry.preset = JSON.parse(JSON.stringify(activePreset.value))
+    }
+  } else {
+    // 其他 Agent：提交 System Prompt draft
+    s.agentPrompts[agentId] = agentPromptDraft.value
+    entry.systemPrompt = agentPromptDraft.value || ''
+  }
+
+  // 读取现有文件，更新当前 Agent，写回
+  let current: { version: number; agents: Record<string, any> } = { version: 1, agents: {} }
+  try {
+    const res = await fetch('/data/defaults/agent-config.json')
+    if (res.ok) current = await res.json()
+  } catch { /* 首次保存 — 用空骨架 */ }
+
+  current.agents[agentId] = entry as any
+
+  const ok = await cfg.saveAgentProjectDefaults(current as any)
+  if (ok) {
+    ui.toast(`已将「${agentList.find(a => a.id === agentId)?.name || agentId}」的配置保存为项目默认`, 'success')
+  } else {
+    ui.toast('保存项目默认失败，请确认开发服务器正在运行', 'error')
+  }
+}
+
+function saveAgentSettings() {
+  if(!activeAgent.value)return
+  // 非 story Agent：提交 System Prompt draft 到持久化
+  if (activeAgent.value !== 'story') {
+    s.agentPrompts[activeAgent.value] = agentPromptDraft.value
+  }
+  s.agentDirty[activeAgent.value]=true
+  ui.toast('Agent 设置已保存','success')
+}
+function restoreAgentDefaults() {
+  if (!activeAgent.value) return
+  const agentId = activeAgent.value
+
+  // 优先查项目默认
+  const pd = cfg.projectAgentDefaults?.agents?.[agentId]
+  if (pd) {
+    s.agentModels[agentId] = pd.model ?? ''
+    s.agentWorldbookEnabled[agentId] = pd.worldBookEnabled ?? false
+    s.agentWorldbookIds[agentId] = [...(pd.worldBookIds || [])]
+    if (agentId === 'story') {
+      s.activePresetId = pd.presetId || ''
+      if (pd.preset) {
+        const existing = (s.presets as PresetItem[]).find(p => p.id === pd.preset!.id)
+        if (!existing) s.presets.push(pd.preset)
+      }
+    } else {
+      s.agentPrompts[agentId] = pd.systemPrompt || ''
+      agentPromptDraft.value = pd.systemPrompt || ''
+    }
+    s.s.agentPromptEdited = false
+    s.agentDirty[agentId] = false
+    ui.toast('已恢复项目默认设置', 'info')
+    return
+  }
+
+  // 无项目默认 → 硬编码兜底
+  s.agentModels[agentId] = ''
+  s.agentWorldbookEnabled[agentId] = false
+  s.agentWorldbookIds[agentId] = []
+  s.agentPrompts[agentId] = ''
+  s.activePresetId = ''
+  agentPromptDraft.value = ''
+  s.s.agentPromptEdited = false
+  s.agentDirty[agentId] = false
+  ui.toast('已恢复默认设置', 'info')
+}
 
 // Phase 8: 世界书管理
 async function importWorldBook() {
@@ -547,6 +634,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
 
           <!-- 操作按钮 -->
           <div class="detail-actions">
+            <AppButton variant="ghost" size="sm" @click="saveAsDefault">保存为默认</AppButton>
             <AppButton variant="ghost" size="sm" @click="restoreAgentDefaults">恢复默认</AppButton>
             <AppButton variant="primary" size="sm" @click="saveAgentSettings">保存设置</AppButton>
           </div>

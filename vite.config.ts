@@ -50,6 +50,29 @@ export default defineConfig({
             }
           })
         })
+        // PUT: 保存项目默认 Agent 配置 (允许创建新文件)
+        server.middlewares.use('/api/defaults', (req, res, next) => {
+          if (req.method !== 'PUT' && req.method !== 'POST') return next()
+          const url = new URL(req.url || '', 'http://localhost')
+          const fileName = url.pathname.replace(/^\/api\/defaults\//, '').replace(/\.json$/, '')
+          if (!fileName || fileName.includes('..')) return next()
+          let body = ''
+          req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+          req.on('end', () => {
+            try {
+              const defaultsDir = resolve(dataDir, 'defaults')
+              if (!fs.existsSync(defaultsDir)) fs.mkdirSync(defaultsDir, { recursive: true })
+              const filePath = resolve(defaultsDir, `${fileName}.json`)
+              fs.writeFileSync(filePath, body, 'utf-8')
+              res.statusCode = 200
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ ok: true }))
+            } catch (e: any) {
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: e.message }))
+            }
+          })
+        })
       },
     },
   ],
@@ -64,7 +87,7 @@ export default defineConfig({
     port: 5173,
     open: true,
     watch: {
-      ignored: ['**/data/worldbooks/**'],  // 世界书文件由 API 写入，不需触发热更新
+      ignored: ['**/data/worldbooks/**', '**/data/defaults/**'],  // API 写入文件，不需触发热更新
     },
   },
   build: {

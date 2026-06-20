@@ -18,6 +18,7 @@ import { AgentClient } from './agent-client';
 import type { ChatRequest } from './agent-client';
 import { buildAgentMessages, getAgentTemplate } from './agent-templates';
 import { scanMarkers } from './marker-protocol';
+import { recallMemories } from './memory-store';
 
 // ========== Types ==========
 
@@ -296,6 +297,11 @@ export class AgentOrchestrator {
       };
     }
 
+    // 🆕 自动检测：memory_recall 模型名含 "embedding" → 走向量召回路径
+    if (config.agentId === 'memory_recall' && /embedding/i.test(config.model)) {
+      return this.callMemoryRecallEmbedding(endpoint, config);
+    }
+
     // 构建 messages (Phase 8: 四部分拼接)
     const configsArr = Array.from(this.agentConfigs.values());
     const messages = buildAgentMessages(
@@ -332,6 +338,65 @@ export class AgentOrchestrator {
     };
 
     return client.chat(request);
+  }
+
+  // ========== Internal: Embedding 记忆召回路径 ==========
+
+  /**
+   * 使用 Embedding API 做向量相似度召回（不经 LLM）
+   * 自动检测条件：config.model 包含 "embedding"（大小写不敏感）
+   */
+  private async callMemoryRecallEmbedding(
+    endpoint: ApiEndpoint,
+    config: AgentConfig,
+  ): Promise<AgentResult> {
+    const startTime = Date.now()
+    const topK = 20 // 使用合理默认值，与 settings-store 的 memoryRecallCount 默认对齐
+    const query = this.context.userInput || ''
+
+    try {
+      const recalled = await recallMemories(
+        this.saveId,
+        query,
+        topK,
+        {
+          baseUrl: endpoint.baseUrl,
+          apiKey: endpoint.apiKey,
+          defaultModel: config.model || endpoint.defaultModel,
+        },
+      )
+
+      // 格式化为与 LLM 路径兼容的输出结构
+      const memories = recalled.map(r => ({
+        id: r.memory.id,
+        relevance: Math.round(r.score * 100) / 100,
+        reason: r.score > 0
+          ? `Embedding 余弦相似度: ${r.score.toFixed(3)}`
+          : '无向量，按重要度排序',
+      }))
+
+      const output = { memories }
+      const duration = Date.now() - startTime
+
+      return {
+        agentId: config.agentId,
+        output,
+        rawResponse: JSON.stringify(output),
+        tokensUsed: 0,       // Embedding API 按 token 计费但在 /chat/completions 口径下为 0
+        cacheHit: false,
+        duration,
+      }
+    } catch (err) {
+      return {
+        agentId: config.agentId,
+        output: null,
+        rawResponse: '',
+        tokensUsed: 0,
+        cacheHit: false,
+        duration: Date.now() - startTime,
+        error: `Embedding 召回失败: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
   }
 
   // ========== Internal: Validation ==========
