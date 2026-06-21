@@ -623,7 +623,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
 
             <!-- 预设选择器栏 -->
             <div class="preset-selector-bar">
-              <select class="form-input preset-select" :value="activePresetId" @change="selectPreset(($event.target as HTMLSelectElement).value)">
+              <select class="form-input preset-select" :value="s.activePresetId" @change="selectPreset(($event.target as HTMLSelectElement).value)">
                 <option value="">— 选择预设 —</option>
                 <option v-for="p in s.presets" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
@@ -640,37 +640,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
                 </div>
                 <div class="preset-viewer-actions">
                   <AppButton variant="ghost" size="sm" @click="exportPresetDynamic(activePreset!)">📤 导出</AppButton>
-                  <AppButton variant="ghost" size="sm" @click="deletePreset(activePresetId)">🗑 删除</AppButton>
-                </div>
-              </div>
-
-              <!-- 采样器参数网格 — 仿 ST 滑块面板 -->
-              <div class="preset-sampler-grid">
-                <div class="sampler-item">
-                  <label class="sampler-label">Temperature</label>
-                  <div class="sampler-row">
-                    <input type="range" class="sampler-slider" min="0" max="2" step="0.1" :value="activePreset.settings?.temp_openai ?? 0.8" disabled />
-                    <span class="sampler-value">{{ activePreset.settings?.temp_openai ?? '0.8' }}</span>
-                  </div>
-                </div>
-                <div class="sampler-item">
-                  <label class="sampler-label">Max Tokens</label>
-                  <span class="sampler-value-text">{{ activePreset.settings?.openai_max_tokens ?? activePreset.settings?.max_tokens ?? '4096' }}</span>
-                </div>
-                <div class="sampler-item">
-                  <label class="sampler-label">Top P</label>
-                  <div class="sampler-row">
-                    <input type="range" class="sampler-slider" min="0" max="1" step="0.05" :value="activePreset.settings?.top_p_openai ?? activePreset.settings?.top_p ?? 1" disabled />
-                    <span class="sampler-value">{{ activePreset.settings?.top_p_openai ?? activePreset.settings?.top_p ?? '1' }}</span>
-                  </div>
-                </div>
-                <div class="sampler-item">
-                  <label class="sampler-label">Frequency Penalty</label>
-                  <span class="sampler-value-text">{{ activePreset.settings?.freq_pen_openai ?? activePreset.settings?.frequency_penalty ?? '0' }}</span>
-                </div>
-                <div class="sampler-item">
-                  <label class="sampler-label">Presence Penalty</label>
-                  <span class="sampler-value-text">{{ activePreset.settings?.pres_pen_openai ?? activePreset.settings?.presence_penalty ?? '0' }}</span>
+                  <AppButton variant="ghost" size="sm" @click="deletePreset(s.activePresetId)">🗑 删除</AppButton>
                 </div>
               </div>
 
@@ -680,7 +650,7 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
                   📝 条目列表（{{ activePreset.settings?.prompts?.length || 0 }} 个）
                 </h4>
                 <div v-for="(sp, idx) in (activePreset.settings?.prompts || [])" :key="sp.identifier || idx" class="subprompt-item" :class="{ 'subprompt-disabled': sp.enabled === false }">
-                  <div class="subprompt-header" @click="toggleEntry(activePresetId, idx)">
+                  <div class="subprompt-header" @click="toggleEntry(s.activePresetId, idx)">
                     <div class="subprompt-info">
                       <label class="subprompt-toggle" @click.stop>
                         <input type="checkbox" :checked="sp.enabled !== false" disabled class="toggle-input" />
@@ -690,12 +660,12 @@ async function clearAll(){const{deleteDatabase}=await import('@engine/database')
                       <span class="subprompt-role text-xs text-muted">{{ sp.role || 'system' }}</span>
                     </div>
                     <div class="subprompt-meta">
-                      <button class="subprompt-edit-btn" @click.stop="openEntryEditor(activePresetId, idx)" title="编辑此条目">✎</button>
+                      <button class="subprompt-edit-btn" @click.stop="openEntryEditor(s.activePresetId, idx)" title="编辑此条目">✎</button>
                       <span class="subprompt-chars text-xs text-muted">{{ (sp.content || '').length }} 字</span>
-                      <span class="subprompt-chevron" :class="{ 'chevron-open': expandedEntries.has(`${activePresetId}:${idx}`) }">▸</span>
+                      <span class="subprompt-chevron" :class="{ 'chevron-open': expandedEntries.has(`${s.activePresetId}:${idx}`) }">▸</span>
                     </div>
                   </div>
-                  <div v-if="expandedEntries.has(`${activePresetId}:${idx}`)" class="subprompt-content">
+                  <div v-if="expandedEntries.has(`${s.activePresetId}:${idx}`)" class="subprompt-content">
                     {{ (sp.content || '(空)').slice(0, 300) }}{{ (sp.content || '').length > 300 ? '...' : '' }}
                   </div>
                 </div>
